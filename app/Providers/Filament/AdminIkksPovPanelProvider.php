@@ -17,6 +17,7 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Filament\Enums\ThemeMode;
 
 class AdminIkksPovPanelProvider extends PanelProvider
 {
@@ -25,6 +26,10 @@ class AdminIkksPovPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('adminIkksPov')
+            ->defaultThemeMode(ThemeMode::Dark)
+            ->brandLogo(asset('images/logo.svg'))
+            ->darkModeBrandLogo(asset('images/logo-white.svg'))
+            ->brandLogoHeight('3.5rem')
             ->path('adminIkksPov')
             ->login()
             ->colors([
