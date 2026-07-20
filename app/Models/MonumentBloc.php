@@ -9,9 +9,13 @@ class MonumentBloc extends Model
     protected $fillable = [
         'monument_id',
         'nom_bloc',
+        'reference_produit',
         'longueur_standard',
         'largeur_standard',
         'epaisseur_standard',
+        'poids_kg',
+        'prix_base',
+        'prix_vente_depart',
         'commentaire',
         'ordre',
     ];

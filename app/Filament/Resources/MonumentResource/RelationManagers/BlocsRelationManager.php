@@ -12,7 +12,7 @@ class BlocsRelationManager extends RelationManager
 {
     protected static string $relationship = 'blocs';
 
-    protected static ?string $title = 'Blocs et dimensions';
+    protected static ?string $title = 'Blocs, dimensions et tarifs';
 
     public function form(Form $form): Form
     {
@@ -21,6 +21,10 @@ class BlocsRelationManager extends RelationManager
                 Forms\Components\TextInput::make('nom_bloc')
                     ->label('Nom du bloc (ex: Semelle, Tombale, Stèle)')
                     ->required()
+                    ->maxLength(255),
+                Forms\Components\TextInput::make('reference_produit')
+                    ->label('Référence produit')
+                    ->unique(ignoreRecord: true)
                     ->maxLength(255),
                 Forms\Components\TextInput::make('longueur_standard')
                     ->label('Longueur standard (cm)')
@@ -31,6 +35,17 @@ class BlocsRelationManager extends RelationManager
                 Forms\Components\TextInput::make('epaisseur_standard')
                     ->label('Épaisseur standard (cm)')
                     ->numeric(),
+                Forms\Components\TextInput::make('poids_kg')
+                    ->label('Poids (kg)')
+                    ->numeric(),
+                Forms\Components\TextInput::make('prix_base')
+                    ->label('Prix de base (€)')
+                    ->numeric()
+                    ->prefix('€'),
+                Forms\Components\TextInput::make('prix_vente_depart')
+                    ->label('Prix de vente départ (€)')
+                    ->numeric()
+                    ->prefix('€'),
                 Forms\Components\Textarea::make('commentaire')
                     ->columnSpanFull(),
                 Forms\Components\TextInput::make('ordre')
@@ -46,12 +61,16 @@ class BlocsRelationManager extends RelationManager
             ->columns([
                 Tables\Columns\TextColumn::make('nom_bloc')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('reference_produit')
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('longueur_standard')
                     ->suffix(' cm'),
                 Tables\Columns\TextColumn::make('largeur_standard')
                     ->suffix(' cm'),
-                Tables\Columns\TextColumn::make('epaisseur_standard')
-                    ->suffix(' cm'),
+                Tables\Columns\TextColumn::make('poids_kg')
+                    ->suffix(' kg'),
+                Tables\Columns\TextColumn::make('prix_vente_depart')
+                    ->money('EUR'),
                 Tables\Columns\TextColumn::make('ordre')
                     ->sortable(),
             ])
