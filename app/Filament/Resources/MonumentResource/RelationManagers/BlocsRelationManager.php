@@ -38,14 +38,6 @@ class BlocsRelationManager extends RelationManager
                 Forms\Components\TextInput::make('poids_kg')
                     ->label('Poids (kg)')
                     ->numeric(),
-                Forms\Components\TextInput::make('prix_base')
-                    ->label('Prix de base (€)')
-                    ->numeric()
-                    ->prefix('€'),
-                Forms\Components\TextInput::make('prix_vente_depart')
-                    ->label('Prix de vente départ (€)')
-                    ->numeric()
-                    ->prefix('€'),
                 Forms\Components\Textarea::make('commentaire')
                     ->columnSpanFull(),
                 Forms\Components\TextInput::make('ordre')
@@ -69,8 +61,6 @@ class BlocsRelationManager extends RelationManager
                     ->suffix(' cm'),
                 Tables\Columns\TextColumn::make('poids_kg')
                     ->suffix(' kg'),
-                Tables\Columns\TextColumn::make('prix_vente_depart')
-                    ->money('EUR'),
                 Tables\Columns\TextColumn::make('ordre')
                     ->sortable(),
             ])

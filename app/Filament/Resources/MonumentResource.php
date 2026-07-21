@@ -113,6 +113,7 @@ class MonumentResource extends Resource
         return [
             RelationManagers\ImagesRelationManager::class,
             RelationManagers\BlocsRelationManager::class,
+            RelationManagers\GranitsRelationManager::class,
         ];
     }
 

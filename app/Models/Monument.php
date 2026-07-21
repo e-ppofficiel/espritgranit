@@ -30,4 +30,11 @@ class Monument extends Model
     {
         return $this->hasMany(MonumentBloc::class)->orderBy('ordre');
     }
+
+    public function granits()
+    {
+        return $this->belongsToMany(Granit::class, 'monument_granit_prix')
+            ->withPivot(['prix_fob', 'taux_marge'])
+            ->withTimestamps();
+    }
 }

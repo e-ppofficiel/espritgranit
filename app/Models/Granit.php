@@ -19,4 +19,11 @@ class Granit extends Model
     protected $casts = [
         'actif' => 'boolean',
     ];
+
+    public function monuments()
+    {
+        return $this->belongsToMany(Monument::class, 'monument_granit_prix')
+            ->withPivot(['prix_fob', 'taux_marge'])
+            ->withTimestamps();
+    }
 }
