@@ -111,6 +111,56 @@
             border-bottom: 2px solid #fff;
             cursor: default;
         }
+        #config-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 4px 20px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .config-option-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.8);
+        }
+        .config-toggle {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 22px;
+        }
+        .config-toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .config-toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255,255,255,0.2);
+            border-radius: 22px;
+            transition: 0.2s;
+        }
+        .config-toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: #fff;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+        .config-toggle input:checked + .config-toggle-slider {
+            background-color: #d97706;
+        }
+        .config-toggle input:checked + .config-toggle-slider:before {
+            transform: translateX(18px);
+        }
         #config-granit-grid {
             flex: 1;
             overflow-y: auto;
@@ -178,15 +228,16 @@
     <div id="config-wrapper">
         @if($glbUrl)
             <model-viewer id="config-monument-viewer"
-              src="{{ $glbUrl }}"
-              camera-controls
-              touch-action="pan-y"
-              shadow-intensity="1"
-              min-camera-orbit="auto 15deg auto"
-              max-camera-orbit="auto 90deg auto"
-              orbit-sensitivity="0.1"
-              camera-target="0.5m 0m 0m"
-              alt="{{ $monument->nom }}">
+                          src="{{ $glbUrl }}"
+                          camera-controls
+                          touch-action="pan-y"
+                          shadow-intensity="1"
+                          min-camera-orbit="auto 15deg auto"
+                          max-camera-orbit="auto 90deg auto"
+                          camera-orbit="0deg 75deg 60%"
+                          orbit-sensitivity="0.4"
+                          camera-target="0.5m 0m 0m"
+                          alt="{{ $monument->nom }}">
             </model-viewer>
 
             <div id="config-topbar">
@@ -210,6 +261,22 @@
                 <div id="config-sub-tabs">
                     <div class="config-sub-tab active">Granits</div>
                     <div class="config-sub-tab">Plantes</div>
+                </div>
+                <div id="config-options">
+                    <div class="config-option-row">
+                        <span>Soubassement noir</span>
+                        <label class="config-toggle">
+                            <input type="checkbox" id="config-bicolor-noir-toggle">
+                            <span class="config-toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="config-option-row">
+                        <span>Avec semelle</span>
+                        <label class="config-toggle">
+                            <input type="checkbox" id="config-semelle-toggle" checked>
+                            <span class="config-toggle-slider"></span>
+                        </label>
+                    </div>
                 </div>
                 <div id="config-granit-grid">
                     @foreach($granits as $granit)
@@ -237,10 +304,58 @@
             const rotateBtn = document.querySelector('#config-rotate-btn');
             const selectedName = document.querySelector('#config-selected-name');
             const selectedSwatch = document.querySelector('#config-selected-swatch');
-
-            const groupesGranit = ['GRANIT', 'SEMELLE', 'BI-COLOR'];
+            const bicolorNoirToggle = document.querySelector('#config-bicolor-noir-toggle');
+            const semelleToggle = document.querySelector('#config-semelle-toggle');
 
             if (!modelViewer) return;
+
+            let currentTexture = null;
+
+            const getMateriaux = (prefixe) => modelViewer.model.materials.filter(
+                mat => mat.name && mat.name.trim().toUpperCase().startsWith(prefixe)
+            );
+
+            const appliquerTextureSur = (materiaux, texture) => {
+                materiaux.forEach(material => {
+                    if (material.pbrMetallicRoughness) {
+                        material.pbrMetallicRoughness.setBaseColorFactor([1, 1, 1, 1]);
+                        if (material.pbrMetallicRoughness.baseColorTexture) {
+                            material.pbrMetallicRoughness.baseColorTexture.setTexture(texture);
+                        }
+                    }
+                });
+            };
+
+            const mettreNoir = (materiaux) => {
+                materiaux.forEach(material => {
+                    if (material.pbrMetallicRoughness) {
+                        material.pbrMetallicRoughness.setBaseColorFactor([0, 0, 0, 1]);
+                    }
+                });
+            };
+
+            const mettreAJourBicolor = () => {
+                const materiauxBicolor = getMateriaux('BICOLOR');
+                if (bicolorNoirToggle.checked) {
+                    mettreNoir(materiauxBicolor);
+                } else if (currentTexture) {
+                    appliquerTextureSur(materiauxBicolor, currentTexture);
+                }
+            };
+
+            const mettreAJourSemelleVisibilite = () => {
+                const materiauxSemelle = getMateriaux('SEMELLE');
+                const visible = semelleToggle.checked;
+                materiauxSemelle.forEach(material => {
+                    if (material.pbrMetallicRoughness) {
+                        material.setAlphaMode(visible ? 'OPAQUE' : 'BLEND');
+                        const facteurActuel = material.pbrMetallicRoughness.baseColorFactor || [1, 1, 1, 1];
+                        material.pbrMetallicRoughness.setBaseColorFactor([
+                            facteurActuel[0], facteurActuel[1], facteurActuel[2], visible ? 1 : 0
+                        ]);
+                    }
+                });
+            };
 
             if (rotateBtn) {
                 rotateBtn.addEventListener('click', () => {
@@ -249,37 +364,17 @@
             }
 
             modelViewer.addEventListener('load', () => {
-                console.log('Liste des matériaux du modèle :');
-                modelViewer.model.materials.forEach((mat, index) => {
-                    console.log(index + ' — ' + mat.name);
-                });
                 swatches.forEach(swatch => {
                     swatch.addEventListener('click', async (event) => {
                         const btn = event.currentTarget;
                         const texturePath = btn.dataset.texture;
                         const nom = btn.dataset.nom;
 
-                        const newTexture = await modelViewer.createTexture(texturePath);
+                        currentTexture = await modelViewer.createTexture(texturePath);
 
-                        // TEST TEMPORAIRE - à retirer une fois qu'un fichier .glb avec le bon nommage de matériaux sera fourni par Sylver
-                        //const materiauxCibles = modelViewer.model.materials;
-                        const groupesGranit = ['GRANIT', 'SEMELLE', 'BICOLOR'];
-
-                        const materiauxCibles = modelViewer.model.materials.filter(mat => {
-                            if (!mat.name) return false;
-                            const nomMajuscule = mat.name.toUpperCase();
-                            return groupesGranit.some(prefixe => nomMajuscule.startsWith(prefixe));
-                        });
-
-                        if (materiauxCibles.length === 0) {
-                            console.warn('Aucun matériau correspondant aux groupes GRANIT / SEMELLE / BICOLOR trouvé sur ce modèle.');
-                        }
-
-                        materiauxCibles.forEach(material => {
-                            if (material.pbrMetallicRoughness && material.pbrMetallicRoughness.baseColorTexture) {
-                                material.pbrMetallicRoughness.baseColorTexture.setTexture(newTexture);
-                            }
-                        });
+                        appliquerTextureSur(getMateriaux('GRANIT'), currentTexture);
+                        appliquerTextureSur(getMateriaux('SEMELLE'), currentTexture);
+                        mettreAJourBicolor();
 
                         swatches.forEach(s => s.classList.remove('selected'));
                         btn.classList.add('selected');
@@ -288,6 +383,9 @@
                         selectedSwatch.style.backgroundSize = 'cover';
                     });
                 });
+
+                bicolorNoirToggle.addEventListener('change', mettreAJourBicolor);
+                semelleToggle.addEventListener('change', mettreAJourSemelleVisibilite);
             });
         });
     </script>
