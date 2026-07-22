@@ -19,4 +19,11 @@ class TransportZone extends Model
     {
         return $this->hasMany(TransportTarif::class)->orderBy('poids_min');
     }
+
+    public static function pourDepartement(string $codeDepartement): ?self
+    {
+        return static::whereHas('departements', function ($query) use ($codeDepartement) {
+            $query->where('code', $codeDepartement);
+        })->first();
+    }
 }

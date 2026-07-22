@@ -3,9 +3,18 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\DevisResource\Pages;
+use App\Models\Agence;
+use App\Models\Departement;
 use App\Models\Devis;
+use App\Models\Monument;
+use App\Models\Societe;
+use App\Services\CoefficientResolver;
+use App\Services\PrixCalculator;
+use App\Services\TransportCalculator;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -19,6 +28,58 @@ class DevisResource extends Resource
     protected static ?string $modelLabel = 'devis';
     protected static ?string $pluralModelLabel = 'devis';
     protected static ?string $navigationLabel = 'Devis';
+
+    protected static function recalculerPrix(Get $get, Set $set): void
+    {
+        $monumentId = $get('monument_id');
+        $granitId = $get('granit_id');
+        $departementId = $get('departement_livraison_id');
+        $societeId = $get('societe_id');
+        $agenceId = $get('agence_id');
+
+        $prixGranit = null;
+        $poidsKg = 0;
+
+        if ($monumentId) {
+            $monument = Monument::find($monumentId);
+            if ($monument) {
+                $poidsKg = (float) $monument->blocs()->sum('poids_kg');
+
+                if ($granitId) {
+                    $lien = $monument->granits()->where('granit_id', $granitId)->first();
+                    if ($lien && $lien->pivot->prix_fob && $lien->pivot->taux_marge !== null) {
+                        $prixGranit = PrixCalculator::prixVenteDepart(
+                            $monument,
+                            (float) $lien->pivot->prix_fob,
+                            (float) $lien->pivot->taux_marge
+                        );
+                    }
+                }
+            }
+        }
+
+        $prixTransport = null;
+        if ($departementId && $poidsKg > 0) {
+            $departement = Departement::find($departementId);
+            if ($departement) {
+                $prixTransport = TransportCalculator::calculer($departement->code, $poidsKg);
+            }
+        }
+
+        $prixTotal = ($prixGranit !== null || $prixTransport !== null)
+            ? ($prixGranit ?? 0) + ($prixTransport ?? 0)
+            : null;
+
+        $agence = $agenceId ? Agence::find($agenceId) : null;
+        $societe = $societeId ? Societe::find($societeId) : null;
+        $coefficient = CoefficientResolver::resoudre($agence, $societe);
+
+        $set('prix_granit_base', $prixGranit);
+        $set('prix_transport', $prixTransport);
+        $set('prix_total', $prixTotal);
+        $set('coefficient_applique', $coefficient);
+        $set('prix_final', $prixTotal !== null ? round($prixTotal * $coefficient, 2) : null);
+    }
 
     public static function form(Form $form): Form
     {
@@ -36,19 +97,22 @@ class DevisResource extends Resource
                     ->searchable()
                     ->preload()
                     ->required()
-                    ->live(),
+                    ->live()
+                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set)),
 
                 Forms\Components\Select::make('agence_id')
                     ->label('Agence')
-                    ->options(function (Forms\Get $get) {
+                    ->options(function (Get $get) {
                         $societeId = $get('societe_id');
                         if (! $societeId) {
                             return [];
                         }
-                        return \App\Models\Agence::where('societe_id', $societeId)->pluck('nom', 'id');
+                        return Agence::where('societe_id', $societeId)->pluck('nom', 'id');
                     })
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->live()
+                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set)),
 
                 Forms\Components\Select::make('user_id')
                     ->label('Contact')
@@ -61,13 +125,27 @@ class DevisResource extends Resource
                     ->relationship('monument', 'nom')
                     ->searchable()
                     ->preload()
-                    ->required(),
+                    ->required()
+                    ->live()
+                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set)),
 
                 Forms\Components\Select::make('granit_id')
                     ->label('Granit')
-                    ->relationship('granit', 'nom_commercial')
+                    ->options(function (Get $get) {
+                        $monumentId = $get('monument_id');
+                        if (! $monumentId) {
+                            return [];
+                        }
+                        $monument = Monument::find($monumentId);
+                        return $monument
+                            ? $monument->granits()->wherePivotNotNull('prix_fob')->pluck('nom_commercial', 'granits.id')
+                            : [];
+                    })
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->helperText('Seuls les granits ayant un prix défini pour ce monument sont proposés.')
+                    ->live()
+                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set)),
 
                 Forms\Components\Select::make('origine')
                     ->options([
@@ -94,26 +172,51 @@ class DevisResource extends Resource
 
                 Forms\Components\Select::make('departement_livraison_id')
                     ->label('Département de livraison')
-                    ->relationship('departementLivraison', 'nom')
-                    ->searchable()
-                    ->preload(),
+                    ->relationship(
+                        name: 'departementLivraison',
+                        titleAttribute: 'nom',
+                        modifyQueryUsing: fn ($query) => $query->orderBy('code'),
+                    )
+                    ->getOptionLabelFromRecordUsing(fn ($record) => "{$record->code} - {$record->nom}")
+                    ->searchable(['code', 'nom'])
+                    ->preload()
+                    ->live()
+                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set)),
 
-                Forms\Components\TextInput::make('prix_granit_base')
-                    ->label('Prix granit (base)')
-                    ->numeric()
-                    ->prefix('€')
-                    ->helperText('Calcul automatique à venir'),
+                Forms\Components\Section::make('Prix')
+                    ->schema([
+                        Forms\Components\TextInput::make('prix_granit_base')
+                            ->label('Prix granit (base)')
+                            ->numeric()
+                            ->prefix('€')
+                            ->helperText('Pré-rempli automatiquement, modifiable si besoin.'),
 
-                Forms\Components\TextInput::make('prix_transport')
-                    ->label('Prix transport')
-                    ->numeric()
-                    ->prefix('€')
-                    ->helperText('Calcul automatique à venir'),
+                        Forms\Components\TextInput::make('prix_transport')
+                            ->label('Prix transport')
+                            ->numeric()
+                            ->prefix('€')
+                            ->helperText('Pré-rempli automatiquement, modifiable si besoin.'),
 
-                Forms\Components\TextInput::make('prix_total')
-                    ->label('Prix total')
-                    ->numeric()
-                    ->prefix('€'),
+                        Forms\Components\TextInput::make('prix_total')
+                            ->label('Prix total (avant coefficient)')
+                            ->numeric()
+                            ->prefix('€')
+                            ->disabled()
+                            ->dehydrated(),
+
+                        Forms\Components\TextInput::make('coefficient_applique')
+                            ->label('Coefficient appliqué')
+                            ->numeric()
+                            ->step(0.01)
+                            ->helperText('Résolu automatiquement : agence > société > général. Modifiable si besoin.'),
+
+                        Forms\Components\TextInput::make('prix_final')
+                            ->label('Prix final (facturé)')
+                            ->numeric()
+                            ->prefix('€')
+                            ->extraInputAttributes(['class' => 'font-bold']),
+                    ])
+                    ->columns(2),
 
                 Forms\Components\Textarea::make('commentaire')
                     ->columnSpanFull(),
@@ -175,7 +278,8 @@ class DevisResource extends Resource
                         default => $state,
                     })
                     ->sortable(),
-                Tables\Columns\TextColumn::make('prix_total')
+                Tables\Columns\TextColumn::make('prix_final')
+                    ->label('Prix final')
                     ->money('EUR')
                     ->sortable()
                     ->placeholder('—'),

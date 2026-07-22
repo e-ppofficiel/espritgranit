@@ -12,12 +12,14 @@ class ParametreTarif extends Model
         'poids_conteneur_kg',
         'cout_transport_conteneur',
         'cout_transit_conteneur',
+        'coefficient_vente_general',
     ];
 
     public static function courant(): self
     {
         return static::firstOrCreate([], [
             'poids_conteneur_kg' => 20000,
+            'coefficient_vente_general' => 1,
         ]);
     }
 }

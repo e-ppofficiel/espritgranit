@@ -21,6 +21,8 @@ class Devis extends Model
         'prix_granit_base',
         'prix_transport',
         'prix_total',
+        'coefficient_applique',
+        'prix_final',
         'commentaire',
         'piece_jointe',
         'visuel',

@@ -32,6 +32,7 @@ class GestionTarifs extends Page implements HasForms
             'poids_conteneur_kg' => $parametre->poids_conteneur_kg,
             'cout_transport_conteneur' => $parametre->cout_transport_conteneur,
             'cout_transit_conteneur' => $parametre->cout_transit_conteneur,
+            'coefficient_vente_general' => $parametre->coefficient_vente_general,
         ]);
     }
 
@@ -59,6 +60,13 @@ class GestionTarifs extends Page implements HasForms
                             ->numeric()
                             ->prefix('€')
                             ->required(),
+                        Forms\Components\TextInput::make('coefficient_vente_general')
+                            ->label('Coefficient de vente général (par défaut)')
+                            ->helperText('Appliqué quand ni l\'agence ni la société n\'ont de coefficient spécifique.')
+                            ->numeric()
+                            ->step(0.01)
+                            ->required()
+                            ->default(1),
                     ]),
             ])
             ->statePath('data');
