@@ -262,7 +262,18 @@
                         const newTexture = await modelViewer.createTexture(texturePath);
 
                         // TEST TEMPORAIRE - à retirer une fois qu'un fichier .glb avec le bon nommage de matériaux sera fourni par Sylver
-const materiauxCibles = modelViewer.model.materials;
+                        //const materiauxCibles = modelViewer.model.materials;
+                        const groupesGranit = ['GRANIT', 'SEMELLE', 'BICOLOR'];
+
+                        const materiauxCibles = modelViewer.model.materials.filter(mat => {
+                            if (!mat.name) return false;
+                            const nomMajuscule = mat.name.toUpperCase();
+                            return groupesGranit.some(prefixe => nomMajuscule.startsWith(prefixe));
+                        });
+
+                        if (materiauxCibles.length === 0) {
+                            console.warn('Aucun matériau correspondant aux groupes GRANIT / SEMELLE / BICOLOR trouvé sur ce modèle.');
+                        }
 
                         materiauxCibles.forEach(material => {
                             if (material.pbrMetallicRoughness && material.pbrMetallicRoughness.baseColorTexture) {

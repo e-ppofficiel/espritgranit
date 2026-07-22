@@ -307,6 +307,21 @@ class DevisResource extends Resource
             ->defaultSort('created_at', 'desc')
             ->actions([
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\Action::make('transformer')
+                    ->label('Transformer en commande')
+                    ->icon('heroicon-o-arrow-right-circle')
+                    ->color('success')
+                    ->visible(fn ($record) => $record->statut === 'accepte')
+                    ->requiresConfirmation()
+                    ->modalHeading('Transformer ce devis en commande ?')
+                    ->action(function ($record) {
+                        $commande = \App\Models\Commande::creerDepuisDevis($record);
+                        \Filament\Notifications\Notification::make()
+                            ->title('Commande créée : ' . $commande->numero)
+                            ->success()
+                            ->send();
+                        return redirect(\App\Filament\Resources\CommandeResource::getUrl('edit', ['record' => $commande]));
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
