@@ -18,6 +18,10 @@ class Configurateur extends Page
 
     public $granits;
 
+    public $semelleTypes;
+
+    public $semelleDimensions;
+
     public static function getSlug(): string
     {
         return 'configurateur/{monument}';
@@ -27,6 +31,11 @@ class Configurateur extends Page
     {
         $this->monument = $monument;
         $this->granits = Granit::where('actif', true)->orderBy('ordre_affichage')->get();
+        $this->semelleTypes = $monument->semelleTypes()
+            ->where('actif', true)
+            ->orderBy('ordre_affichage')
+            ->get();
+        $this->semelleDimensions = $monument->semelleDimensions;
     }
 
     public function getTitle(): string

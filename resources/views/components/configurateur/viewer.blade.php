@@ -223,6 +223,58 @@
             color: #fff;
             opacity: 0.6;
         }
+        #config-semelle-type-section {
+            padding: 4px 20px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            transition: opacity 0.2s;
+        }
+        #config-semelle-type-section.disabled {
+            opacity: 0.35;
+            pointer-events: none;
+        }
+        .config-semelle-label {
+            font-size: 0.7rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.4);
+            margin: 0 0 8px;
+        }
+        #config-semelle-types {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .config-semelle-btn {
+            cursor: pointer;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: rgba(255,255,255,0.8);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+        }
+        .config-semelle-btn:hover {
+            background: rgba(255,255,255,0.12);
+        }
+        .config-semelle-btn.selected {
+            border-color: #d97706;
+            color: #d97706;
+            background: rgba(217,119,6,0.1);
+        }
+        #config-semelle-dimensions {
+            width: 100%;
+            margin-top: 8px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+        }
+        #config-semelle-dimensions option {
+            background: #0a0a0a;
+            color: #fff;
+        }
     </style>
 
     <div id="config-wrapper">
@@ -278,6 +330,35 @@
                         </label>
                     </div>
                 </div>
+
+                @if(($semelleTypes ?? collect())->isNotEmpty())
+                    <div id="config-semelle-type-section">
+                        <div class="config-semelle-label">Type de semelle</div>
+                        <div id="config-semelle-types">
+                            @foreach($semelleTypes as $type)
+                                <button type="button"
+                                        class="config-semelle-btn @if($type->pivot->is_default) selected @endif"
+                                        data-code="{{ $type->code }}"
+                                        data-type-id="{{ $type->id }}">
+                                    {{ $type->label }}
+                                </button>
+                            @endforeach
+                        </div>
+
+                        @if(($semelleDimensions ?? collect())->isNotEmpty())
+                            <select id="config-semelle-dimensions">
+                                @foreach($semelleDimensions as $dimension)
+                                    <option value="{{ $dimension->id }}"
+                                            data-type="{{ $dimension->semelle_type_id }}"
+                                            @if($dimension->is_default) selected @endif>
+                                        {{ $dimension->label ?: ($dimension->longueur . ' x ' . $dimension->largeur . ' cm') }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        @endif
+                    </div>
+                @endif
+
                 <div id="config-granit-grid">
                     @foreach($granits as $granit)
                         @if($granit->image)
@@ -343,18 +424,56 @@
                 }
             };
 
+            const semelleButtons = document.querySelectorAll('.config-semelle-btn');
+            const semelleDimSelect = document.querySelector('#config-semelle-dimensions');
+            const semelleTypeSection = document.querySelector('#config-semelle-type-section');
+            const codesTypesSemelle = [...semelleButtons].map(b => b.dataset.code.toUpperCase());
+
             const mettreAJourSemelleVisibilite = () => {
                 const materiauxSemelle = getMateriaux('SEMELLE');
-                const visible = semelleToggle.checked;
+                const semelleActivee = semelleToggle.checked;
+                const boutonSelectionne = document.querySelector('.config-semelle-btn.selected');
+                const codeSelectionne = boutonSelectionne ? boutonSelectionne.dataset.code.toUpperCase() : null;
+
                 materiauxSemelle.forEach(material => {
-                    if (material.pbrMetallicRoughness) {
-                        material.setAlphaMode(visible ? 'OPAQUE' : 'BLEND');
-                        const facteurActuel = material.pbrMetallicRoughness.baseColorFactor || [1, 1, 1, 1];
-                        material.pbrMetallicRoughness.setBaseColorFactor([
-                            facteurActuel[0], facteurActuel[1], facteurActuel[2], visible ? 1 : 0
-                        ]);
+                    if (!material.pbrMetallicRoughness) return;
+
+                    // Un monument peut avoir plusieurs types de semelle modélisés (SEMELLE-B, SEMELLE-P, SEMELLE-R)
+                    // ou un seul groupe générique "SEMELLE" (monuments sans variante de type).
+                    const nomMajuscule = material.name.trim().toUpperCase();
+                    const codeCorrespondant = codesTypesSemelle.find(code => nomMajuscule.startsWith(code));
+
+                    let visible = semelleActivee;
+                    if (semelleActivee && codeCorrespondant && codeSelectionne) {
+                        visible = codeCorrespondant === codeSelectionne;
+                    }
+
+                    material.setAlphaMode(visible ? 'OPAQUE' : 'BLEND');
+                    const facteurActuel = material.pbrMetallicRoughness.baseColorFactor || [1, 1, 1, 1];
+                    material.pbrMetallicRoughness.setBaseColorFactor([
+                        facteurActuel[0], facteurActuel[1], facteurActuel[2], visible ? 1 : 0
+                    ]);
+                });
+            };
+
+            const filtrerDimensionsParType = (code) => {
+                if (!semelleDimSelect) return;
+                const boutonSelectionne = [...semelleButtons].find(b => b.dataset.code.toUpperCase() === code.toUpperCase());
+                const typeId = boutonSelectionne ? boutonSelectionne.dataset.typeId : null;
+
+                let premiereOptionVisible = null;
+                [...semelleDimSelect.options].forEach(option => {
+                    const optionTypeId = option.dataset.type || '';
+                    const correspond = optionTypeId === '' || optionTypeId === typeId;
+                    option.hidden = !correspond;
+                    if (correspond && !premiereOptionVisible) {
+                        premiereOptionVisible = option;
                     }
                 });
+
+                if (premiereOptionVisible && semelleDimSelect.selectedOptions[0]?.hidden) {
+                    semelleDimSelect.value = premiereOptionVisible.value;
+                }
             };
 
             if (rotateBtn) {
@@ -375,6 +494,7 @@
                         appliquerTextureSur(getMateriaux('GRANIT'), currentTexture);
                         appliquerTextureSur(getMateriaux('SEMELLE'), currentTexture);
                         mettreAJourBicolor();
+                        mettreAJourSemelleVisibilite();
 
                         swatches.forEach(s => s.classList.remove('selected'));
                         btn.classList.add('selected');
@@ -385,7 +505,38 @@
                 });
 
                 bicolorNoirToggle.addEventListener('change', mettreAJourBicolor);
-                semelleToggle.addEventListener('change', mettreAJourSemelleVisibilite);
+                semelleToggle.addEventListener('change', () => {
+                    mettreAJourSemelleVisibilite();
+                    if (semelleTypeSection) {
+                        semelleTypeSection.classList.toggle('disabled', !semelleToggle.checked);
+                    }
+                });
+
+                if (semelleButtons.length > 0) {
+                    semelleButtons.forEach(button => {
+                        button.addEventListener('click', () => {
+                            const code = button.dataset.code;
+
+                            semelleButtons.forEach(b => b.classList.remove('selected'));
+                            button.classList.add('selected');
+
+                            mettreAJourSemelleVisibilite();
+                            filtrerDimensionsParType(code);
+                        });
+                    });
+
+                    // État initial : applique le type par défaut (ou le premier) au chargement
+                    const boutonInitial = document.querySelector('.config-semelle-btn.selected') || semelleButtons[0];
+                    if (boutonInitial) {
+                        boutonInitial.classList.add('selected');
+                        filtrerDimensionsParType(boutonInitial.dataset.code);
+                    }
+                    if (semelleTypeSection) {
+                        semelleTypeSection.classList.toggle('disabled', !semelleToggle.checked);
+                    }
+                }
+
+                mettreAJourSemelleVisibilite();
             });
         });
     </script>

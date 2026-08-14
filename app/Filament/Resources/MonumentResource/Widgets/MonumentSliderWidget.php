@@ -11,11 +11,18 @@ class MonumentSliderWidget extends Widget
 
     protected int|string|array $columnSpan = 'full';
 
+    public bool $steleArt = false;
+
     public function getMonuments()
     {
-        return Monument::where('actif', true)
+        $query = Monument::where('actif', true)
             ->whereNotNull('image_principale')
-            ->orderBy('ordre_affichage')
-            ->get();
+            ->orderBy('ordre_affichage');
+
+        if ($this->steleArt) {
+            $query->where('reference_interne', 'like', 'ST-%');
+        }
+
+        return $query->get();
     }
 }

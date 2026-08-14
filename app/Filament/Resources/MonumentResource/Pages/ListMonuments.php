@@ -6,10 +6,32 @@ use App\Filament\Resources\MonumentResource;
 use App\Filament\Resources\MonumentResource\Widgets\MonumentSliderWidget;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
+use Illuminate\Database\Eloquent\Builder;
 
 class ListMonuments extends ListRecords
 {
     protected static string $resource = MonumentResource::class;
+
+    public function getTitle(): string
+    {
+        return $this->filtreSteleArt() ? 'Monuments Stèle Art' : 'Monuments';
+    }
+
+    protected function getTableQuery(): Builder
+    {
+        $query = parent::getTableQuery();
+
+        if ($this->filtreSteleArt()) {
+            $query->where('reference_interne', 'like', 'ST-%');
+        }
+
+        return $query;
+    }
+
+    protected function filtreSteleArt(): bool
+    {
+        return request()->boolean('stele_art');
+    }
 
     protected function getHeaderActions(): array
     {
@@ -21,7 +43,7 @@ class ListMonuments extends ListRecords
     protected function getHeaderWidgets(): array
     {
         return [
-            MonumentSliderWidget::class,
+            MonumentSliderWidget::make(['steleArt' => $this->filtreSteleArt()]),
         ];
     }
 }

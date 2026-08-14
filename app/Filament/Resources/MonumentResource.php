@@ -7,6 +7,7 @@ use App\Filament\Resources\MonumentResource\RelationManagers;
 use App\Models\Monument;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Navigation\NavigationItem;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -114,6 +115,35 @@ class MonumentResource extends Resource
             RelationManagers\ImagesRelationManager::class,
             RelationManagers\BlocsRelationManager::class,
             RelationManagers\GranitsRelationManager::class,
+            RelationManagers\SemelleTypesRelationManager::class,
+            RelationManagers\SemelleDimensionsRelationManager::class,
+        ];
+    }
+
+    public static function getNavigationItems(): array
+    {
+        return [
+            // Item par défaut, reproduit à l'identique du comportement standard Filament
+            // (voir Filament\Resources\Resource::getNavigationItems()), pour ne rien changer
+            // au comportement existant du menu "Monuments".
+            NavigationItem::make(static::getNavigationLabel())
+                ->group(static::getNavigationGroup())
+                ->parentItem(static::getNavigationParentItem())
+                ->icon(static::getNavigationIcon())
+                ->activeIcon(static::getActiveNavigationIcon())
+                ->isActiveWhen(fn () => request()->routeIs(static::getRouteBaseName() . '.*') && ! request()->boolean('stele_art'))
+                ->badge(static::getNavigationBadge(), color: static::getNavigationBadgeColor())
+                ->badgeTooltip(static::getNavigationBadgeTooltip())
+                ->sort(static::getNavigationSort())
+                ->url(static::getNavigationUrl()),
+
+            // Deuxième item : même page, filtrée sur les références Stèle Art (préfixe ST-)
+            NavigationItem::make('Monuments Stèle Art')
+                ->group(static::getNavigationGroup())
+                ->icon(static::getNavigationIcon())
+                ->isActiveWhen(fn () => request()->routeIs(static::getRouteBaseName() . '.index') && request()->boolean('stele_art'))
+                ->sort(static::getNavigationSort())
+                ->url(fn (): string => static::getUrl('index', ['stele_art' => 1])),
         ];
     }
 

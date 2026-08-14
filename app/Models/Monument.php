@@ -37,4 +37,16 @@ class Monument extends Model
             ->withPivot(['prix_fob', 'taux_marge'])
             ->withTimestamps();
     }
+
+    public function semelleTypes()
+    {
+        return $this->belongsToMany(SemelleType::class, 'monument_semelle_type')
+            ->withPivot(['is_default'])
+            ->withTimestamps();
+    }
+
+    public function semelleDimensions()
+    {
+        return $this->hasMany(MonumentSemelleDimension::class)->orderBy('ordre_affichage');
+    }
 }
