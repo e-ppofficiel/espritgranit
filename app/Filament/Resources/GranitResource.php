@@ -32,10 +32,12 @@ class GranitResource extends Resource
                     ->unique(ignoreRecord: true)
                     ->maxLength(255),
                 Forms\Components\FileUpload::make('image')
+                    ->label('Image source')
                     ->image()
                     ->imageEditor()
                     ->directory('granits')
-                    ->visibility('public'),
+                    ->visibility('public')
+                    ->helperText('Cette image sert de texture haute qualité dans le configurateur 3D. Une vignette compressée est générée automatiquement pour l\'affichage des listes, sans toucher à cette image source.'),
                 Forms\Components\TextInput::make('pays')
                     ->maxLength(255),
                 Forms\Components\Toggle::make('actif')
@@ -52,7 +54,9 @@ class GranitResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\ImageColumn::make('image')
+                Tables\Columns\ImageColumn::make('image_vignette')
+                    ->label('Image')
+                    ->getStateUsing(fn (Granit $record) => $record->image_vignette ?? $record->image)
                     ->square(),
                 Tables\Columns\TextColumn::make('nom_commercial')
                     ->searchable()

@@ -13,8 +13,11 @@ class Monument extends Model
         'fichier_3d',
         'image_principale',
         'description',
+        'poids_total_kg',
         'ordre_affichage',
         'actif',
+        'soubassement_noir_supplement_type',
+        'soubassement_noir_supplement_valeur',
     ];
 
     protected $casts = [
@@ -29,6 +32,22 @@ class Monument extends Model
     public function blocs()
     {
         return $this->hasMany(MonumentBloc::class)->orderBy('ordre');
+    }
+
+    /**
+     * Poids du monument à utiliser pour les calculs (prix granit, transport).
+     * Priorité au poids total saisi directement sur le monument (source de vérité
+     * demandée par Christophe, alignée sur le fichier Excel).
+     * Repli automatique sur la somme des blocs pour les monuments pas encore
+     * mis à jour avec un poids total explicite.
+     */
+    public function poidsKg(): float
+    {
+        if ($this->poids_total_kg !== null) {
+            return (float) $this->poids_total_kg;
+        }
+
+        return (float) $this->blocs()->sum('poids_kg');
     }
 
     public function granits()
@@ -48,5 +67,10 @@ class Monument extends Model
     public function semelleDimensions()
     {
         return $this->hasMany(MonumentSemelleDimension::class)->orderBy('ordre_affichage');
+    }
+
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class, 'monument_tag')->withTimestamps();
     }
 }

@@ -42,6 +42,11 @@ class MonumentCatalogResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('categorie')
                     ->badge(),
+                Tables\Columns\TextColumn::make('tags.nom')
+                    ->label('Mots-clés')
+                    ->badge()
+                    ->separator(',')
+                    ->searchable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('categorie')
@@ -51,6 +56,12 @@ class MonumentCatalogResource extends Resource
                         'plinthes' => 'Plinthes',
                         'accessoires' => 'Accessoires',
                     ]),
+                Tables\Filters\SelectFilter::make('tags')
+                    ->label('Mots-clés')
+                    ->relationship('tags', 'nom')
+                    ->multiple()
+                    ->preload()
+                    ->searchable(),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make()

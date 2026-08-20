@@ -23,31 +23,77 @@ class AgenceResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('societe_id')
-                    ->required()
-                    ->numeric(),
+                Forms\Components\Select::make('societe_id')
+                    ->label('Société')
+                    ->relationship('societe', 'enseigne')
+                    ->searchable()
+                    ->preload()
+                    ->required(),
+
                 Forms\Components\TextInput::make('nom')
+                    ->label('Nom de l\'agence')
                     ->required()
                     ->maxLength(255),
-                Forms\Components\TextInput::make('adresse')
-                    ->maxLength(255)
-                    ->default(null),
-                Forms\Components\TextInput::make('adresse_livraison')
-                    ->maxLength(255)
-                    ->default(null),
-                Forms\Components\TextInput::make('contact')
-                    ->maxLength(255)
-                    ->default(null),
-                Forms\Components\TextInput::make('email')
-                    ->email()
-                    ->maxLength(255)
-                    ->default(null),
-                Forms\Components\TextInput::make('telephone')
-                    ->tel()
-                    ->maxLength(255)
-                    ->default(null),
+
+                Forms\Components\Section::make('Adresse de l\'agence')
+                    ->schema([
+                        Forms\Components\TextInput::make('adresse')
+                            ->maxLength(255)
+                            ->default(null),
+                        Forms\Components\TextInput::make('code_postal')
+                            ->label('Code postal')
+                            ->maxLength(10)
+                            ->default(null),
+                        Forms\Components\TextInput::make('commune')
+                            ->maxLength(255)
+                            ->default(null),
+                        Forms\Components\TextInput::make('contact')
+                            ->label('Contact agence')
+                            ->maxLength(255)
+                            ->default(null),
+                        Forms\Components\TextInput::make('email')
+                            ->email()
+                            ->maxLength(255)
+                            ->default(null),
+                        Forms\Components\TextInput::make('telephone')
+                            ->label('Téléphone agence')
+                            ->tel()
+                            ->maxLength(255)
+                            ->default(null),
+                    ])
+                    ->columns(2),
+
+                Forms\Components\Section::make('Adresse de livraison')
+                    ->schema([
+                        Forms\Components\TextInput::make('adresse_livraison')
+                            ->label('Adresse')
+                            ->maxLength(255)
+                            ->default(null),
+                        Forms\Components\TextInput::make('code_postal_livraison')
+                            ->label('Code postal')
+                            ->maxLength(10)
+                            ->default(null),
+                        Forms\Components\TextInput::make('commune_livraison')
+                            ->label('Commune')
+                            ->maxLength(255)
+                            ->default(null),
+                        Forms\Components\TextInput::make('contact_livraison')
+                            ->label('Contact livraison')
+                            ->maxLength(255)
+                            ->default(null),
+                        Forms\Components\TextInput::make('telephone_livraison')
+                            ->label('Téléphone livraison')
+                            ->tel()
+                            ->maxLength(255)
+                            ->default(null),
+                    ])
+                    ->columns(2),
+
                 Forms\Components\TextInput::make('coefficient_vente')
+                    ->label('Coefficient de vente spécifique')
                     ->numeric()
+                    ->step(0.01)
+                    ->helperText('Laisser vide pour utiliser le coefficient de la société, ou à défaut le coefficient général.')
                     ->default(null),
             ]);
     }
@@ -56,24 +102,47 @@ class AgenceResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('societe_id')
-                    ->numeric()
+                Tables\Columns\TextColumn::make('societe.enseigne')
+                    ->label('Société')
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('nom')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('adresse')
-                    ->searchable(),
+                    ->searchable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('code_postal')
+                    ->label('CP')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('commune')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('adresse_livraison')
-                    ->searchable(),
+                    ->label('Adresse livraison')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('contact')
-                    ->searchable(),
+                    ->searchable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('email')
-                    ->searchable(),
+                    ->searchable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('telephone')
-                    ->searchable(),
+                    ->searchable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('contact_livraison')
+                    ->label('Contact livraison')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('telephone_livraison')
+                    ->label('Tél. livraison')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('coefficient_vente')
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -84,7 +153,10 @@ class AgenceResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('societe_id')
+                    ->label('Société')
+                    ->relationship('societe', 'enseigne')
+                    ->searchable(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),

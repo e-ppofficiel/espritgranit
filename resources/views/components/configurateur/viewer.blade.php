@@ -166,8 +166,8 @@
             overflow-y: auto;
             padding: 4px 20px 20px;
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
             align-content: start;
         }
         .config-granit-swatch {
@@ -181,17 +181,29 @@
             width: 100%;
             aspect-ratio: 1;
             object-fit: cover;
-            border-radius: 6px;
+            border-radius: 8px;
             border: 2px solid transparent;
             display: block;
+            box-shadow:
+                0 6px 14px rgba(0, 0, 0, 0.45),
+                inset 0 1px 1px rgba(255, 255, 255, 0.18),
+                inset 0 -2px 3px rgba(0, 0, 0, 0.35);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .config-granit-swatch:hover img {
+            transform: translateY(-2px);
+            box-shadow:
+                0 10px 18px rgba(0, 0, 0, 0.5),
+                inset 0 1px 1px rgba(255, 255, 255, 0.2),
+                inset 0 -2px 3px rgba(0, 0, 0, 0.35);
         }
         .config-granit-swatch.selected img {
             border-color: #d97706;
         }
         .config-granit-swatch span {
             display: block;
-            margin-top: 4px;
-            font-size: 0.65rem;
+            margin-top: 6px;
+            font-size: 0.7rem;
             color: rgba(255,255,255,0.6);
             line-height: 1.2;
         }
@@ -366,7 +378,7 @@
                                     class="config-granit-swatch"
                                     data-texture="{{ asset('storage/' . $granit->image) }}"
                                     data-nom="{{ $granit->nom_commercial }}">
-                                <img src="{{ asset('storage/' . $granit->image) }}" alt="{{ $granit->nom_commercial }}">
+                                <img src="{{ asset('storage/' . ($granit->image_vignette ?? $granit->image)) }}" alt="{{ $granit->nom_commercial }}">
                                 <span>{{ $granit->nom_commercial }}</span>
                             </button>
                         @endif

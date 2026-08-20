@@ -37,7 +37,8 @@ class BlocsRelationManager extends RelationManager
                     ->numeric(),
                 Forms\Components\TextInput::make('poids_kg')
                     ->label('Poids (kg)')
-                    ->numeric(),
+                    ->numeric()
+                    ->helperText('Facultatif : utilisé uniquement si aucun poids total n\'est renseigné sur la fiche du monument.'),
                 Forms\Components\Textarea::make('commentaire')
                     ->columnSpanFull(),
                 Forms\Components\TextInput::make('ordre')
@@ -59,6 +60,10 @@ class BlocsRelationManager extends RelationManager
                     ->suffix(' cm'),
                 Tables\Columns\TextColumn::make('largeur_standard')
                     ->suffix(' cm'),
+                Tables\Columns\TextColumn::make('epaisseur_standard')
+                    ->label('Hauteur')
+                    ->suffix(' cm')
+                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('poids_kg')
                     ->suffix(' kg'),
                 Tables\Columns\TextColumn::make('ordre')

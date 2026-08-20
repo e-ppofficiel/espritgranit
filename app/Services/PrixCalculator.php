@@ -9,7 +9,7 @@ class PrixCalculator
 {
     public static function prixVenteDepart(Monument $monument, float $prixFob, float $tauxMarge): ?float
     {
-        $poidsKg = $monument->blocs()->sum('poids_kg');
+        $poidsKg = $monument->poidsKg();
 
         if ($poidsKg <= 0 || $prixFob <= 0) {
             return null;

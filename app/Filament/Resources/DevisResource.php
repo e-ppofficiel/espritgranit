@@ -36,14 +36,16 @@ class DevisResource extends Resource
         $departementId = $get('departement_livraison_id');
         $societeId = $get('societe_id');
         $agenceId = $get('agence_id');
+        $soubassementNoir = (bool) $get('soubassement_noir');
 
         $prixGranit = null;
         $poidsKg = 0;
+        $monument = null;
 
         if ($monumentId) {
             $monument = Monument::find($monumentId);
             if ($monument) {
-                $poidsKg = (float) $monument->blocs()->sum('poids_kg');
+                $poidsKg = $monument->poidsKg();
 
                 if ($granitId) {
                     $lien = $monument->granits()->where('granit_id', $granitId)->first();
@@ -54,6 +56,14 @@ class DevisResource extends Resource
                             (float) $lien->pivot->taux_marge
                         );
                     }
+                }
+
+                // Supplément "soubassement noir", appliqué sur le prix granit de base si activé
+                // et si ce monument propose l'option (sinon aucun effet).
+                if ($prixGranit !== null && $soubassementNoir && $monument->soubassement_noir_supplement_valeur) {
+                    $prixGranit += $monument->soubassement_noir_supplement_type === 'pourcentage'
+                        ? round($prixGranit * ((float) $monument->soubassement_noir_supplement_valeur / 100), 2)
+                        : (float) $monument->soubassement_noir_supplement_valeur;
                 }
             }
         }
@@ -185,6 +195,25 @@ class DevisResource extends Resource
 
                 Forms\Components\Section::make('Prix')
                     ->schema([
+                        Forms\Components\Toggle::make('soubassement_noir')
+                            ->label('Soubassement noir')
+                            ->live()
+                            ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set))
+                            ->helperText(function (Get $get) {
+                                $monumentId = $get('monument_id');
+                                if (! $monumentId) {
+                                    return null;
+                                }
+                                $monument = Monument::find($monumentId);
+                                if (! $monument || ! $monument->soubassement_noir_supplement_valeur) {
+                                    return 'Aucun supplément configuré pour ce monument.';
+                                }
+                                return $monument->soubassement_noir_supplement_type === 'pourcentage'
+                                    ? "Supplément : +{$monument->soubassement_noir_supplement_valeur}% sur le prix granit."
+                                    : "Supplément : +{$monument->soubassement_noir_supplement_valeur}€ sur le prix granit.";
+                            })
+                            ->columnSpanFull(),
+
                         Forms\Components\TextInput::make('prix_granit_base')
                             ->label('Prix granit (base)')
                             ->numeric()

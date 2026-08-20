@@ -8,6 +8,10 @@ class Devis extends Model
 {
     protected $table = 'devis';
 
+    protected $casts = [
+        'soubassement_noir' => 'boolean',
+    ];
+
     protected $fillable = [
         'numero',
         'societe_id',
@@ -15,6 +19,7 @@ class Devis extends Model
         'user_id',
         'monument_id',
         'granit_id',
+        'soubassement_noir',
         'origine',
         'statut',
         'departement_livraison_id',

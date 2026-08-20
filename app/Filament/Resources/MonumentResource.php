@@ -54,11 +54,51 @@ class MonumentResource extends Resource
                     ->visibility('public'),
                 Forms\Components\Textarea::make('description')
                     ->columnSpanFull(),
+                Forms\Components\Select::make('tags')
+                    ->label('Mots-clés')
+                    ->relationship('tags', 'nom')
+                    ->multiple()
+                    ->searchable()
+                    ->preload()
+                    ->createOptionForm([
+                        Forms\Components\TextInput::make('nom')
+                            ->label('Nouveau mot-clé')
+                            ->required()
+                            ->unique(table: 'tags', column: 'nom'),
+                    ])
+                    ->helperText('Tape un mot-clé existant pour le sélectionner (ex: moderne, épuré, double tombe), ou un nouveau mot pour le créer directement.')
+                    ->columnSpanFull(),
+                Forms\Components\TextInput::make('poids_total_kg')
+                    ->label('Poids total du monument (kg)')
+                    ->numeric()
+                    ->step(0.01)
+                    ->suffix('kg')
+                    ->helperText('Utilisé pour le calcul du prix granit et du transport. Si vide, le système se rabat sur la somme des poids par bloc (ancien fonctionnement).'),
                 Forms\Components\TextInput::make('ordre_affichage')
                     ->numeric()
                     ->default(0),
                 Forms\Components\Toggle::make('actif')
                     ->default(true),
+
+                Forms\Components\Section::make('Option "Soubassement noir"')
+                    ->description('Laisser vide si cette option n\'est pas proposée pour ce monument.')
+                    ->schema([
+                        Forms\Components\Select::make('soubassement_noir_supplement_type')
+                            ->label('Type de supplément')
+                            ->options([
+                                'fixe' => 'Montant fixe (€)',
+                                'pourcentage' => 'Pourcentage du prix granit',
+                            ])
+                            ->native(false)
+                            ->live(),
+                        Forms\Components\TextInput::make('soubassement_noir_supplement_valeur')
+                            ->label('Valeur du supplément')
+                            ->numeric()
+                            ->step(0.01)
+                            ->suffix(fn (Forms\Get $get) => $get('soubassement_noir_supplement_type') === 'pourcentage' ? '%' : '€')
+                            ->visible(fn (Forms\Get $get) => filled($get('soubassement_noir_supplement_type'))),
+                    ])
+                    ->columns(2),
             ]);
     }
 
@@ -77,6 +117,11 @@ class MonumentResource extends Resource
                 Tables\Columns\TextColumn::make('categorie')
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('tags.nom')
+                    ->label('Mots-clés')
+                    ->badge()
+                    ->separator(',')
+                    ->toggleable(),
                 Tables\Columns\IconColumn::make('actif')
                     ->boolean()
                     ->sortable(),
