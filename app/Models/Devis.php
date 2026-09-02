@@ -9,7 +9,8 @@ class Devis extends Model
     protected $table = 'devis';
 
     protected $casts = [
-        'soubassement_noir' => 'boolean',
+    'soubassement_noir' => 'boolean',
+    'visuel' => 'array',
     ];
 
     protected $fillable = [

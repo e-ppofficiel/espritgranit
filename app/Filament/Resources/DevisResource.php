@@ -18,6 +18,7 @@ use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Livewire\Component as LivewireComponent;
 
 class DevisResource extends Resource
 {
@@ -91,6 +92,21 @@ class DevisResource extends Resource
         $set('prix_final', $prixTotal !== null ? round($prixTotal * $coefficient, 2) : null);
     }
 
+    /**
+     * Prévient l'aperçu 3D (composant Alpine wire:ignore) qu'un des champs dont il dépend
+     * a changé, via un évènement navigateur classique — plus fiable qu'un entangle Alpine
+     * pour synchroniser un widget volontairement isolé du cycle de rendu Livewire.
+     */
+   protected static function notifierApercu3D(Get $get, ?LivewireComponent $livewire): void
+{
+    $livewire?->dispatch(
+        'devis-configurateur-change',
+        monumentId: $get('monument_id'),
+        granitId: $get('granit_id'),
+        soubassementNoir: (bool) $get('soubassement_noir'),
+    );
+}
+
     public static function form(Form $form): Form
     {
         return $form
@@ -137,7 +153,10 @@ class DevisResource extends Resource
                     ->preload()
                     ->required()
                     ->live()
-                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set)),
+                    ->afterStateUpdated(function (Get $get, Set $set, ?LivewireComponent $livewire) {
+                        static::recalculerPrix($get, $set);
+                        static::notifierApercu3D($get, $livewire);
+                    }),
 
                 Forms\Components\Select::make('granit_id')
                     ->label('Granit')
@@ -155,7 +174,18 @@ class DevisResource extends Resource
                     ->preload()
                     ->helperText('Seuls les granits ayant un prix défini pour ce monument sont proposés.')
                     ->live()
-                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set)),
+                    ->afterStateUpdated(function (Get $get, Set $set, ?LivewireComponent $livewire) {
+                        static::recalculerPrix($get, $set);
+                        static::notifierApercu3D($get, $livewire);
+                    }),
+
+                Forms\Components\View::make('filament.forms.components.devis-visuel-capture')
+                    ->viewData(fn (Get $get) => [
+                        'monumentIdInitial' => $get('monument_id'),
+                        'granitIdInitial' => $get('granit_id'),
+                        'soubassementNoirInitial' => (bool) $get('soubassement_noir'),
+                    ])
+                    ->columnSpanFull(),
 
                 Forms\Components\Select::make('origine')
                     ->options([
@@ -198,7 +228,10 @@ class DevisResource extends Resource
                         Forms\Components\Toggle::make('soubassement_noir')
                             ->label('Soubassement noir')
                             ->live()
-                            ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set))
+                            ->afterStateUpdated(function (Get $get, Set $set, ?LivewireComponent $livewire) {
+                                static::recalculerPrix($get, $set);
+                                static::notifierApercu3D($get, $livewire);
+                            })
                             ->helperText(function (Get $get) {
                                 $monumentId = $get('monument_id');
                                 if (! $monumentId) {
@@ -255,10 +288,22 @@ class DevisResource extends Resource
                     ->visibility('public'),
 
                 Forms\Components\FileUpload::make('visuel')
-                    ->label('Visuel du monument configuré')
-                    ->image()
-                    ->directory('devis/visuels')
-                    ->visibility('public'),
+                ->label('Visuel du monument configuré')
+                ->image()
+                ->multiple()
+                ->reorderable()
+                ->directory('devis/visuels')
+                ->visibility('public')
+                ->extraAlpineAttributes([
+                    'x-on:devis-visuel-captures-ready.window' => '
+                        const pond = FilePond.find($el.querySelector(".filepond--root"));
+                        if (pond) {
+                            $event.detail.forEach((fichier) => pond.addFile(fichier));
+                        } else {
+                            console.error("[devis-visuel] instance FilePond introuvable sur ce champ");
+                        }
+                    ',
+                ]),
             ]);
     }
 
