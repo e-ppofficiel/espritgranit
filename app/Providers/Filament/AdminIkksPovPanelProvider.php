@@ -32,6 +32,7 @@ class AdminIkksPovPanelProvider extends PanelProvider
             ->brandLogoHeight('3.5rem')
             ->path('adminIkksPov')
             ->login()
+            ->authGuard('admin')     
             ->colors([
                 'primary' => Color::Amber,
             ])

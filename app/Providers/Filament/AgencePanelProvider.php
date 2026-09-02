@@ -31,6 +31,7 @@ class AgencePanelProvider extends PanelProvider
             ->brandLogoHeight('3.5rem')
             ->path('agence')
             ->login()
+            ->authGuard('agence')   
             ->colors([
                 'primary' => Color::Amber,
             ])
