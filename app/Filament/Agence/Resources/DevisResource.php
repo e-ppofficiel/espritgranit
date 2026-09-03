@@ -1,0 +1,388 @@
+<?php
+
+namespace App\Filament\Agence\Resources;
+
+use App\Filament\Agence\Resources\DevisResource\Pages;
+use App\Models\Agence;
+use App\Models\Departement;
+use App\Models\Devis;
+use App\Models\Monument;
+use App\Models\Societe;
+use App\Services\CoefficientResolver;
+use App\Services\PrixCalculator;
+use App\Services\TransportCalculator;
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
+use Livewire\Component as LivewireComponent;
+
+class DevisResource extends Resource
+{
+    protected static ?string $model = Devis::class;
+
+    protected static ?string $navigationIcon = 'heroicon-o-document-text';
+
+    protected static ?string $modelLabel = 'devis';
+    protected static ?string $pluralModelLabel = 'mes devis';
+    protected static ?string $navigationLabel = 'Mes devis';
+
+    /**
+     * Même mécanique de scoping que CommandeResource : priorité à l'agence de l'utilisateur,
+     * repli sur toute la société s'il n'a pas d'agence propre (responsable de société),
+     * aucun accès sinon.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $user = Auth::user();
+
+        $query = parent::getEloquentQuery();
+
+        if ($user->agence_id) {
+            return $query->where('agence_id', $user->agence_id);
+        }
+
+        if ($user->societe_id) {
+            return $query->where('societe_id', $user->societe_id);
+        }
+
+        return $query->whereRaw('1 = 0');
+    }
+
+    protected static function recalculerPrix(Get $get, Set $set): void
+    {
+        $monumentId = $get('monument_id');
+        $granitId = $get('granit_id');
+        $departementId = $get('departement_livraison_id');
+        $soubassementNoir = (bool) $get('soubassement_noir');
+
+        $prixGranit = null;
+        $poidsKg = 0;
+        $monument = null;
+
+        if ($monumentId) {
+            $monument = Monument::find($monumentId);
+            if ($monument) {
+                $poidsKg = $monument->poidsKg();
+
+                if ($granitId) {
+                    $lien = $monument->granits()->where('granit_id', $granitId)->first();
+                    if ($lien && $lien->pivot->prix_fob && $lien->pivot->taux_marge !== null) {
+                        $prixGranit = PrixCalculator::prixVenteDepart(
+                            $monument,
+                            (float) $lien->pivot->prix_fob,
+                            (float) $lien->pivot->taux_marge
+                        );
+                    }
+                }
+
+                if ($prixGranit !== null && $soubassementNoir && $monument->soubassement_noir_supplement_valeur) {
+                    $prixGranit += $monument->soubassement_noir_supplement_type === 'pourcentage'
+                        ? round($prixGranit * ((float) $monument->soubassement_noir_supplement_valeur / 100), 2)
+                        : (float) $monument->soubassement_noir_supplement_valeur;
+                }
+            }
+        }
+
+        $prixTransport = null;
+        if ($departementId && $poidsKg > 0) {
+            $departement = Departement::find($departementId);
+            if ($departement) {
+                $prixTransport = TransportCalculator::calculer($departement->code, $poidsKg);
+            }
+        }
+
+        $prixTotal = ($prixGranit !== null || $prixTransport !== null)
+            ? ($prixGranit ?? 0) + ($prixTransport ?? 0)
+            : null;
+
+        // Côté agence, le coefficient est toujours celui de l'utilisateur connecté
+        // (pas de société/agence à choisir puisque le champ n'existe plus dans ce formulaire).
+        $user = Auth::user();
+        $agence = $user->agence_id ? Agence::find($user->agence_id) : null;
+        $societe = $user->societe_id ? Societe::find($user->societe_id) : null;
+        $coefficient = CoefficientResolver::resoudre($agence, $societe);
+
+        $set('prix_granit_base', $prixGranit);
+        $set('prix_transport', $prixTransport);
+        $set('prix_total', $prixTotal);
+        $set('coefficient_applique', $coefficient);
+        $set('prix_final', $prixTotal !== null ? round($prixTotal * $coefficient, 2) : null);
+    }
+
+    protected static function notifierApercu3D(Get $get, ?LivewireComponent $livewire): void
+    {
+        $livewire?->dispatch(
+            'devis-configurateur-change',
+            monumentId: $get('monument_id'),
+            granitId: $get('granit_id'),
+            soubassementNoir: (bool) $get('soubassement_noir'),
+        );
+    }
+
+    public static function form(Form $form): Form
+    {
+        return $form
+            ->schema([
+                Forms\Components\TextInput::make('numero')
+                    ->label('Numéro')
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->placeholder('Généré automatiquement à la création'),
+
+                Forms\Components\Select::make('user_id')
+                    ->label('Contact')
+                    ->relationship('user', 'name', fn (Builder $query) => $query->where('agence_id', Auth::user()->agence_id ?? -1))
+                    ->searchable()
+                    ->preload(),
+
+                Forms\Components\Select::make('monument_id')
+                    ->label('Monument')
+                    ->relationship('monument', 'nom')
+                    ->searchable()
+                    ->preload()
+                    ->required()
+                    ->live()
+                    ->afterStateUpdated(function (Get $get, Set $set, ?LivewireComponent $livewire) {
+                        static::recalculerPrix($get, $set);
+                        static::notifierApercu3D($get, $livewire);
+                    }),
+
+                Forms\Components\Select::make('granit_id')
+                    ->label('Granit')
+                    ->options(function (Get $get) {
+                        $monumentId = $get('monument_id');
+                        if (! $monumentId) {
+                            return [];
+                        }
+                        $monument = Monument::find($monumentId);
+                        return $monument
+                            ? $monument->granits()->wherePivotNotNull('prix_fob')->pluck('nom_commercial', 'granits.id')
+                            : [];
+                    })
+                    ->searchable()
+                    ->preload()
+                    ->helperText('Seuls les granits ayant un prix défini pour ce monument sont proposés.')
+                    ->live()
+                    ->afterStateUpdated(function (Get $get, Set $set, ?LivewireComponent $livewire) {
+                        static::recalculerPrix($get, $set);
+                        static::notifierApercu3D($get, $livewire);
+                    }),
+
+                Forms\Components\View::make('filament.forms.components.devis-visuel-capture')
+                    ->viewData(fn (Get $get) => [
+                        'monumentIdInitial' => $get('monument_id'),
+                        'granitIdInitial' => $get('granit_id'),
+                        'soubassementNoirInitial' => (bool) $get('soubassement_noir'),
+                    ])
+                    ->columnSpanFull(),
+
+                Forms\Components\Select::make('statut')
+                    ->options([
+                        'brouillon' => 'Brouillon',
+                        'envoye' => 'Envoyé',
+                        'en_attente' => 'En attente',
+                        'accepte' => 'Accepté',
+                        'refuse' => 'Refusé',
+                        'expire' => 'Expiré',
+                        // 'transforme_commande' volontairement absent : cette transition ne se
+                        // fait que côté admin, via le bouton dédié qui crée la commande réelle.
+                    ])
+                    ->default('brouillon')
+                    ->native(false)
+                    ->required(),
+
+                Forms\Components\Select::make('departement_livraison_id')
+                    ->label('Département de livraison')
+                    ->relationship(
+                        name: 'departementLivraison',
+                        titleAttribute: 'nom',
+                        modifyQueryUsing: fn ($query) => $query->orderBy('code'),
+                    )
+                    ->getOptionLabelFromRecordUsing(fn ($record) => "{$record->code} - {$record->nom}")
+                    ->searchable(['code', 'nom'])
+                    ->preload()
+                    ->live()
+                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set)),
+
+                Forms\Components\Section::make('Prix')
+                    ->schema([
+                        Forms\Components\Toggle::make('soubassement_noir')
+                            ->label('Soubassement noir')
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Set $set, ?LivewireComponent $livewire) {
+                                static::recalculerPrix($get, $set);
+                                static::notifierApercu3D($get, $livewire);
+                            })
+                            ->helperText(function (Get $get) {
+                                $monumentId = $get('monument_id');
+                                if (! $monumentId) {
+                                    return null;
+                                }
+                                $monument = Monument::find($monumentId);
+                                if (! $monument || ! $monument->soubassement_noir_supplement_valeur) {
+                                    return 'Aucun supplément configuré pour ce monument.';
+                                }
+                                return $monument->soubassement_noir_supplement_type === 'pourcentage'
+                                    ? "Supplément : +{$monument->soubassement_noir_supplement_valeur}% sur le prix granit."
+                                    : "Supplément : +{$monument->soubassement_noir_supplement_valeur}€ sur le prix granit.";
+                            })
+                            ->columnSpanFull(),
+
+                        Forms\Components\TextInput::make('prix_granit_base')
+                            ->label('Prix granit (base)')
+                            ->numeric()
+                            ->prefix('€')
+                            ->disabled()
+                            ->dehydrated()
+                            ->helperText('Calculé automatiquement.'),
+
+                        Forms\Components\TextInput::make('prix_transport')
+                            ->label('Prix transport')
+                            ->numeric()
+                            ->prefix('€')
+                            ->disabled()
+                            ->dehydrated()
+                            ->helperText('Calculé automatiquement.'),
+
+                        Forms\Components\TextInput::make('prix_total')
+                            ->label('Prix total (avant coefficient)')
+                            ->numeric()
+                            ->prefix('€')
+                            ->disabled()
+                            ->dehydrated(),
+
+                        Forms\Components\TextInput::make('coefficient_applique')
+                            ->label('Coefficient appliqué')
+                            ->numeric()
+                            ->disabled()
+                            ->dehydrated(),
+
+                        Forms\Components\TextInput::make('prix_final')
+                            ->label('Prix final')
+                            ->numeric()
+                            ->prefix('€')
+                            ->disabled()
+                            ->dehydrated()
+                            ->extraInputAttributes(['class' => 'font-bold']),
+                    ])
+                    ->columns(2),
+
+                Forms\Components\Textarea::make('commentaire')
+                    ->label('Commentaire ou demande particulière')
+                    ->columnSpanFull(),
+
+                Forms\Components\FileUpload::make('piece_jointe')
+                    ->directory('devis/pieces-jointes')
+                    ->visibility('public'),
+
+                Forms\Components\FileUpload::make('visuel')
+                    ->label('Visuel du monument configuré')
+                    ->image()
+                    ->multiple()
+                    ->reorderable()
+                    ->directory('devis/visuels')
+                    ->visibility('public')
+                    ->extraAlpineAttributes([
+                        'x-on:devis-visuel-captures-ready.window' => '
+                            const pond = FilePond.find($el.querySelector(".filepond--root"));
+                            if (pond) {
+                                $event.detail.forEach((fichier) => pond.addFile(fichier));
+                            } else {
+                                console.error("[devis-visuel] instance FilePond introuvable sur ce champ");
+                            }
+                        ',
+                    ]),
+            ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                Tables\Columns\TextColumn::make('numero')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('bold'),
+                Tables\Columns\TextColumn::make('agence.nom')
+                    ->label('Agence')
+                    ->toggleable()
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('monument.nom')
+                    ->label('Monument')
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('granit.nom_commercial')
+                    ->label('Granit')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('statut')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'brouillon' => 'gray',
+                        'envoye' => 'info',
+                        'en_attente' => 'warning',
+                        'accepte' => 'success',
+                        'refuse' => 'danger',
+                        'expire' => 'danger',
+                        'transforme_commande' => 'success',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'brouillon' => 'Brouillon',
+                        'envoye' => 'Envoyé',
+                        'en_attente' => 'En attente',
+                        'accepte' => 'Accepté',
+                        'refuse' => 'Refusé',
+                        'expire' => 'Expiré',
+                        'transforme_commande' => 'Commande',
+                        default => $state,
+                    })
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('prix_final')
+                    ->label('Prix final')
+                    ->money('EUR')
+                    ->sortable()
+                    ->placeholder('—'),
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Créé le')
+                    ->dateTime('d/m/Y')
+                    ->sortable(),
+            ])
+            ->defaultSort('created_at', 'desc')
+            ->filters([
+                Tables\Filters\SelectFilter::make('statut')
+                    ->options([
+                        'brouillon' => 'Brouillon',
+                        'envoye' => 'Envoyé',
+                        'en_attente' => 'En attente',
+                        'accepte' => 'Accepté',
+                        'refuse' => 'Refusé',
+                        'expire' => 'Expiré',
+                        'transforme_commande' => 'Transformé en commande',
+                    ]),
+            ])
+            ->actions([
+                Tables\Actions\EditAction::make(),
+            ]);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            //
+        ];
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListDevis::route('/'),
+            'create' => Pages\CreateDevis::route('/create'),
+            'edit' => Pages\EditDevis::route('/{record}/edit'),
+        ];
+    }
+}
