@@ -13,6 +13,13 @@ class DevisPdfGenerator
      */
     public static function telecharger(Devis $devis): \Illuminate\Http\Response
     {
+        // Certaines images de monuments/visuels uploadées peuvent être volumineuses
+        // (plusieurs Mo en PNG non compressé une fois décodées par GD) — la limite
+        // mémoire globale du serveur (128M) est trop juste pour ce traitement ponctuel.
+        // On l'augmente uniquement pour cette requête précise, sans toucher au réglage
+        // global qui reste adapté au reste du site.
+        ini_set('memory_limit', '512M');
+
         $donnees = static::preparerDonnees($devis);
 
         return Pdf::loadView('pdf.devis', $donnees)
@@ -25,6 +32,20 @@ class DevisPdfGenerator
         $devis->loadMissing(['societe', 'agence', 'monument', 'granit', 'departementLivraison']);
 
         $visuels = static::encoderVisuelsEnBase64($devis->visuel ?? []);
+        $visuelParDefaut = false;
+
+        // Repli sur l'image principale (non configurée) du monument si aucun visuel
+        // n'a été capturé pour ce devis — mieux qu'un devis sans aucune image.
+        if (empty($visuels) && $devis->monument?->image_principale) {
+            $disk = Storage::disk('public');
+            if ($disk->exists($devis->monument->image_principale)) {
+                $image = static::redimensionnerEtEncoder($disk->path($devis->monument->image_principale));
+                if ($image) {
+                    $visuels = [$image];
+                    $visuelParDefaut = true;
+                }
+            }
+        }
 
         return [
             'devis' => $devis,
@@ -32,6 +53,7 @@ class DevisPdfGenerator
             // image étant réduite (donc plus nette visuellement) que la version en pleine
             // largeur d'origine, dont la résolution est plafonnée par la capture d'écran.
             'visuelsParPaires' => array_chunk($visuels, 2),
+            'visuelParDefaut' => $visuelParDefaut,
         ];
     }
 

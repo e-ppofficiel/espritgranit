@@ -31,6 +31,13 @@
             margin: 18px 0 8px;
         }
 
+        .note-visuel {
+            font-size: 9px;
+            color: #9ca3af;
+            font-style: italic;
+            margin: -4px 0 8px;
+        }
+
         table.infos { width: 100%; border-collapse: collapse; }
         table.infos td { width: 50%; vertical-align: top; padding-right: 20px; font-size: 11px; line-height: 1.6; }
         table.infos .label { color: #6b7280; font-size: 9px; text-transform: uppercase; }
@@ -170,7 +177,16 @@
     </table>
 
     @if(count($visuelsParPaires) > 0)
-        <div class="section-titre">Visuel du monument configuré</div>
+        <div class="section-titre">
+            @if($visuelParDefaut)
+                Aperçu du modèle
+            @else
+                Visuel du monument configuré
+            @endif
+        </div>
+        @if($visuelParDefaut)
+            <div class="note-visuel">Photo générique du modèle — aucun visuel personnalisé n'a été capturé pour ce devis.</div>
+        @endif
         <table class="visuels-table">
             @foreach($visuelsParPaires as $paire)
                 <tr>
