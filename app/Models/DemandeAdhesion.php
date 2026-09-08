@@ -2,9 +2,12 @@
 
 namespace App\Models;
 
+use App\Mail\DemandeAdhesionAcceptee;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class DemandeAdhesion extends Model
 {
@@ -50,16 +53,24 @@ class DemandeAdhesion extends Model
 
     /**
      * Accepte la demande : crée la Société, l'Agence et le compte Utilisateur associés,
-     * puis marque la demande comme traitée.
+     * envoie les identifiants par e-mail, puis marque la demande comme traitée.
      *
-     * ⚠️ Les noms de colonnes utilisés pour Societe (enseigne, raison_sociale, siret,
-     * adresse, statut_compte, coefficient_vente) sont basés sur la documentation du
-     * projet — à vérifier/ajuster si le modèle Societe réel diffère légèrement.
+     * @throws RuntimeException si un compte existe déjà avec cet e-mail (doublon de
+     *         demande, ou client déjà adhérent) — évite un plantage brut en base et
+     *         laisse l'appelant décider quoi afficher à l'admin.
      *
-     * @return array{societe: Societe, agence: Agence, user: User, motDePasseTemporaire: string}
+     * @return array{societe: Societe, agence: Agence, user: User, motDePasseTemporaire: string, emailEnvoye: bool}
      */
     public function accepter(): array
     {
+        if (User::where('email', $this->email)->exists()) {
+            throw new RuntimeException(
+                "Un compte existe déjà avec l'adresse {$this->email}. " .
+                "Si c'est un doublon de demande, refuse plutôt celle-ci. " .
+                "Si le client a besoin d'une nouvelle agence sur un compte existant, ça se fait manuellement depuis Agences."
+            );
+        }
+
         $societe = Societe::create([
             'enseigne' => $this->enseigne,
             'raison_sociale' => $this->raison_sociale,
@@ -105,11 +116,20 @@ class DemandeAdhesion extends Model
             'traitee_le' => now(),
         ]);
 
+        $emailEnvoye = true;
+        try {
+            Mail::to($user->email)->send(new DemandeAdhesionAcceptee($user, $motDePasseTemporaire));
+        } catch (\Throwable $e) {
+            report($e);
+            $emailEnvoye = false;
+        }
+
         return [
             'societe' => $societe,
             'agence' => $agence,
             'user' => $user,
             'motDePasseTemporaire' => $motDePasseTemporaire,
+            'emailEnvoye' => $emailEnvoye,
         ];
     }
 

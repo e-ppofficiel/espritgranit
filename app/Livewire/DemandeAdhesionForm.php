@@ -2,7 +2,9 @@
 
 namespace App\Livewire;
 
+use App\Mail\DemandeAdhesionRecue;
 use App\Models\DemandeAdhesion;
+use Illuminate\Support\Facades\Mail;
 use Livewire\Component;
 
 class DemandeAdhesionForm extends Component
@@ -51,7 +53,15 @@ class DemandeAdhesionForm extends Component
     {
         $donnees = $this->validate();
 
-        DemandeAdhesion::create($donnees);
+        $demande = DemandeAdhesion::create($donnees);
+
+        // L'échec de l'envoi d'e-mail (SMTP mal configuré, etc.) ne doit jamais faire
+        // perdre la demande elle-même — elle est déjà enregistrée en base à ce stade.
+        try {
+            Mail::to($demande->email)->send(new DemandeAdhesionRecue($demande));
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         $this->envoyee = true;
     }

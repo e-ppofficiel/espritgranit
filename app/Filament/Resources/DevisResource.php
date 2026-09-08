@@ -97,15 +97,15 @@ class DevisResource extends Resource
      * a changé, via un évènement navigateur classique — plus fiable qu'un entangle Alpine
      * pour synchroniser un widget volontairement isolé du cycle de rendu Livewire.
      */
-   protected static function notifierApercu3D(Get $get, ?LivewireComponent $livewire): void
-{
-    $livewire?->dispatch(
-        'devis-configurateur-change',
-        monumentId: $get('monument_id'),
-        granitId: $get('granit_id'),
-        soubassementNoir: (bool) $get('soubassement_noir'),
-    );
-}
+    protected static function notifierApercu3D(Get $get, ?LivewireComponent $livewire): void
+    {
+        $livewire?->dispatch(
+            'devis-configurateur-change',
+            monumentId: $get('monument_id'),
+            granitId: $get('granit_id'),
+            soubassementNoir: (bool) $get('soubassement_noir'),
+        );
+    }
 
     public static function form(Form $form): Form
     {
@@ -381,6 +381,12 @@ class DevisResource extends Resource
             ->defaultSort('created_at', 'desc')
             ->actions([
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\Action::make('telechargerPdf')
+                    ->label('PDF')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->color('gray')
+                    ->url(fn (Devis $record) => route('devis.telecharger-pdf', $record))
+                    ->openUrlInNewTab(),
                 Tables\Actions\Action::make('transformer')
                     ->label('Transformer en commande')
                     ->icon('heroicon-o-arrow-right-circle')

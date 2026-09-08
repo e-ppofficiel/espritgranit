@@ -101,8 +101,6 @@ class DevisResource extends Resource
             ? ($prixGranit ?? 0) + ($prixTransport ?? 0)
             : null;
 
-        // Côté agence, le coefficient est toujours celui de l'utilisateur connecté
-        // (pas de société/agence à choisir puisque le champ n'existe plus dans ce formulaire).
         $user = Auth::user();
         $agence = $user->agence_id ? Agence::find($user->agence_id) : null;
         $societe = $user->societe_id ? Societe::find($user->societe_id) : null;
@@ -367,6 +365,12 @@ class DevisResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\Action::make('telechargerPdf')
+                    ->label('PDF')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->color('gray')
+                    ->url(fn (Devis $record) => route('devis.telecharger-pdf', $record))
+                    ->openUrlInNewTab(),
             ]);
     }
 

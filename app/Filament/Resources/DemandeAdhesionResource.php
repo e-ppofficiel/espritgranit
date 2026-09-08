@@ -139,16 +139,34 @@ class DemandeAdhesionResource extends Resource
                     ->visible(fn (DemandeAdhesion $record) => $record->statut === 'en_attente')
                     ->requiresConfirmation()
                     ->modalHeading('Accepter cette demande ?')
-                    ->modalDescription('Un compte Société, Agence et Utilisateur sera créé automatiquement, avec un mot de passe temporaire à transmettre au client.')
+                    ->modalDescription('Un compte Société, Agence et Utilisateur sera créé automatiquement. Les identifiants de connexion seront envoyés par e-mail au client.')
                     ->action(function (DemandeAdhesion $record) {
-                        $resultat = $record->accepter();
+                        try {
+                            $resultat = $record->accepter();
+                        } catch (\RuntimeException $e) {
+                            Notification::make()
+                                ->title('Impossible d\'accepter cette demande')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->persistent()
+                                ->send();
+                            return;
+                        }
 
-                        Notification::make()
-                            ->title('Demande acceptée')
-                            ->body("Compte créé pour {$record->email}. Mot de passe temporaire : {$resultat['motDePasseTemporaire']} — à transmettre au client par un canal sécurisé (pas d'envoi automatique pour l'instant).")
-                            ->success()
-                            ->persistent()
-                            ->send();
+                        if ($resultat['emailEnvoye']) {
+                            Notification::make()
+                                ->title('Demande acceptée')
+                                ->body("Compte créé pour {$record->email}. Les identifiants de connexion lui ont été envoyés par e-mail.")
+                                ->success()
+                                ->send();
+                        } else {
+                            Notification::make()
+                                ->title('Demande acceptée — envoi e-mail échoué')
+                                ->body("Compte créé pour {$record->email}, mais l'e-mail n'a pas pu être envoyé (vérifier la config SMTP). Mot de passe temporaire à transmettre manuellement : {$resultat['motDePasseTemporaire']}")
+                                ->warning()
+                                ->persistent()
+                                ->send();
+                        }
                     }),
 
                 Tables\Actions\Action::make('refuser')
