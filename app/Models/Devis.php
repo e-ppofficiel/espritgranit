@@ -3,9 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Devis extends Model
 {
+    use LogsActivity;
+
     protected $table = 'devis';
 
     protected $casts = [
@@ -33,6 +37,29 @@ class Devis extends Model
         'piece_jointe',
         'visuel',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        // Champs volontairement ciblés (pas ->logFillable()) : les champs fichiers
+        // (piece_jointe, visuel) sont exclus car peu utiles à comparer en "avant/après"
+        // et 'visuel' (tableau) fait planter l'affichage du détail dans Filament.
+        return LogOptions::defaults()
+            ->logOnly([
+                'statut',
+                'monument_id',
+                'granit_id',
+                'soubassement_noir',
+                'departement_livraison_id',
+                'prix_granit_base',
+                'prix_transport',
+                'prix_total',
+                'coefficient_applique',
+                'prix_final',
+                'commentaire',
+            ])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
 
     protected static function booted(): void
     {

@@ -4,9 +4,13 @@ namespace App\Models;
 
 use App\Services\ImageOptimizer;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Granit extends Model
 {
+    use LogsActivity;
+
     protected $fillable = [
         'nom_commercial',
         'reference_interne',
@@ -22,6 +26,14 @@ class Granit extends Model
         'actif' => 'boolean',
     ];
 
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['nom_commercial', 'reference_interne', 'pays', 'actif'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
+
     protected static function booted(): void
     {
         static::saved(function (Granit $granit) {
@@ -29,6 +41,8 @@ class Granit extends Model
                 $vignette = ImageOptimizer::genererVignette($granit->image);
                 if ($vignette) {
                     // updateQuietly pour ne pas redéclencher cet événement 'saved' en boucle
+                    // (et ne pas non plus polluer le journal d'activité avec cette
+                    // régénération purement technique de la vignette).
                     $granit->updateQuietly(['image_vignette' => $vignette]);
                 }
             }

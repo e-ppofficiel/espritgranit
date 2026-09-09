@@ -3,9 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Commande extends Model
 {
+    use LogsActivity;
+
     protected $fillable = [
         'numero',
         'devis_id',
@@ -35,6 +39,23 @@ class Commande extends Model
         'date_arrivee_reelle' => 'date',
         'annulee_at' => 'datetime',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly([
+                'statut',
+                'container_id',
+                'prix_transport',
+                'prix_final',
+                'date_depart_prevue',
+                'date_arrivee_prevue',
+                'date_arrivee_reelle',
+                'commentaire',
+            ])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
 
     protected static function booted(): void
     {

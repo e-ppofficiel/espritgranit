@@ -3,9 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Container extends Model
 {
+    use LogsActivity;
+
     protected $fillable = [
         'reference',
         'statut',
@@ -21,6 +25,14 @@ class Container extends Model
         'date_arrivee_reelle' => 'date',
     ];
 
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['statut', 'date_depart', 'date_arrivee_prevue', 'date_arrivee_reelle', 'informations_complementaires'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
+
     public function commandes()
     {
         return $this->hasMany(Commande::class);
@@ -29,6 +41,11 @@ class Container extends Model
     /**
      * Répercute le statut et les dates du container sur toutes les commandes rattachées.
      * Correspondance des statuts container -> commande.
+     *
+     * Boucle avec ->save() individuel plutôt qu'une mise à jour groupée en une requête :
+     * une mise à jour groupée via le query builder ne déclenche pas les évènements
+     * Eloquent, donc ne serait jamais suivie dans le journal d'activité — alors que
+     * cette action est explicitement citée au cahier des charges comme devant l'être.
      */
     public function repercuterSurCommandes(): void
     {
@@ -41,11 +58,19 @@ class Container extends Model
 
         $statutCommande = $correspondanceStatuts[$this->statut] ?? null;
 
-        $this->commandes()->update(array_filter([
+        $valeurs = array_filter([
             'statut' => $statutCommande,
             'date_depart_prevue' => $this->date_depart,
             'date_arrivee_prevue' => $this->date_arrivee_prevue,
             'date_arrivee_reelle' => $this->date_arrivee_reelle,
-        ], fn ($value) => $value !== null));
+        ], fn ($value) => $value !== null);
+
+        if (empty($valeurs)) {
+            return;
+        }
+
+        foreach ($this->commandes as $commande) {
+            $commande->fill($valeurs)->save();
+        }
     }
 }
