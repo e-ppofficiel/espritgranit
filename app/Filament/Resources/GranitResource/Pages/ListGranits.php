@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\GranitResource\Pages;
 
+use App\Filament\Exports\GranitExporter;
 use App\Filament\Resources\GranitResource;
 use Filament\Actions;
+use Filament\Actions\ExportAction;
 use Filament\Resources\Pages\ListRecords;
 
 class ListGranits extends ListRecords
@@ -14,6 +16,8 @@ class ListGranits extends ListRecords
     {
         return [
             Actions\CreateAction::make(),
+            ExportAction::make()
+                ->exporter(GranitExporter::class),
         ];
     }
 }

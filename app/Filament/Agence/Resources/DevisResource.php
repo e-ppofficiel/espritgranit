@@ -362,6 +362,37 @@ class DevisResource extends Resource
                         'expire' => 'Expiré',
                         'transforme_commande' => 'Transformé en commande',
                     ]),
+                // Utile principalement pour un "responsable de société", qui voit les devis
+                // de toutes les agences de sa société — sans effet pour un utilisateur
+                // d'agence classique, déjà scopé à la sienne.
+                Tables\Filters\SelectFilter::make('agence_id')
+                    ->relationship('agence', 'nom')
+                    ->label('Agence')
+                    ->searchable(),
+                Tables\Filters\SelectFilter::make('monument_id')
+                    ->relationship('monument', 'nom')
+                    ->label('Modèle')
+                    ->searchable(),
+                Tables\Filters\Filter::make('periode')
+                    ->form([
+                        Forms\Components\DatePicker::make('du')->label('Du'),
+                        Forms\Components\DatePicker::make('au')->label('Au'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when($data['du'] ?? null, fn ($q, $date) => $q->whereDate('created_at', '>=', $date))
+                            ->when($data['au'] ?? null, fn ($q, $date) => $q->whereDate('created_at', '<=', $date));
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicateurs = [];
+                        if ($data['du'] ?? null) {
+                            $indicateurs['du'] = 'Du ' . \Carbon\Carbon::parse($data['du'])->format('d/m/Y');
+                        }
+                        if ($data['au'] ?? null) {
+                            $indicateurs['au'] = 'Au ' . \Carbon\Carbon::parse($data['au'])->format('d/m/Y');
+                        }
+                        return $indicateurs;
+                    }),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),

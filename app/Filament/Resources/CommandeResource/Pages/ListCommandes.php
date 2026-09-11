@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\CommandeResource\Pages;
 
+use App\Filament\Exports\CommandeExporter;
 use App\Filament\Resources\CommandeResource;
 use Filament\Actions;
+use Filament\Actions\ExportAction;
 use Filament\Resources\Pages\ListRecords;
 
 class ListCommandes extends ListRecords
@@ -14,6 +16,8 @@ class ListCommandes extends ListRecords
     {
         return [
             Actions\CreateAction::make(),
+            ExportAction::make()
+                ->exporter(CommandeExporter::class),
         ];
     }
 }

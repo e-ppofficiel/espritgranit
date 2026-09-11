@@ -2,9 +2,11 @@
 
 namespace App\Filament\Resources\MonumentResource\Pages;
 
+use App\Filament\Exports\MonumentExporter;
 use App\Filament\Resources\MonumentResource;
 use App\Filament\Resources\MonumentResource\Widgets\MonumentSliderWidget;
 use Filament\Actions;
+use Filament\Actions\ExportAction;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -37,6 +39,8 @@ class ListMonuments extends ListRecords
     {
         return [
             Actions\CreateAction::make(),
+            ExportAction::make()
+                ->exporter(MonumentExporter::class),
         ];
     }
 

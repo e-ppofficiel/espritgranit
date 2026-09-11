@@ -5,6 +5,13 @@ use App\Models\Devis;
 use App\Services\DevisPdfGenerator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Filament\Actions\Exports\Http\Controllers\DownloadExport;
+
+Route::get('/filament/exports/{export}/download', DownloadExport::class)
+    ->name('filament.exports.download')
+    ->middleware(['web', 'auth:admin']);
+
+
 
 Route::get('/demande-adhesion', DemandeAdhesionForm::class)->name('demande-adhesion');
 

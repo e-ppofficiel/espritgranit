@@ -18,6 +18,7 @@ use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Component as LivewireComponent;
 
 class DevisResource extends Resource
@@ -377,6 +378,34 @@ class DevisResource extends Resource
                     ->relationship('societe', 'enseigne')
                     ->label('Société')
                     ->searchable(),
+                Tables\Filters\SelectFilter::make('monument_id')
+                    ->relationship('monument', 'nom')
+                    ->label('Modèle')
+                    ->searchable(),
+                Tables\Filters\SelectFilter::make('user_id')
+                    ->relationship('user', 'name')
+                    ->label('Commercial')
+                    ->searchable(),
+                Tables\Filters\Filter::make('periode')
+                    ->form([
+                        Forms\Components\DatePicker::make('du')->label('Du'),
+                        Forms\Components\DatePicker::make('au')->label('Au'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when($data['du'] ?? null, fn ($q, $date) => $q->whereDate('created_at', '>=', $date))
+                            ->when($data['au'] ?? null, fn ($q, $date) => $q->whereDate('created_at', '<=', $date));
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicateurs = [];
+                        if ($data['du'] ?? null) {
+                            $indicateurs['du'] = 'Du ' . \Carbon\Carbon::parse($data['du'])->format('d/m/Y');
+                        }
+                        if ($data['au'] ?? null) {
+                            $indicateurs['au'] = 'Au ' . \Carbon\Carbon::parse($data['au'])->format('d/m/Y');
+                        }
+                        return $indicateurs;
+                    }),
             ])
             ->defaultSort('created_at', 'desc')
             ->actions([
@@ -423,6 +452,24 @@ class DevisResource extends Resource
             'index' => Pages\ListDevis::route('/'),
             'create' => Pages\CreateDevis::route('/create'),
             'edit' => Pages\EditDevis::route('/{record}/edit'),
+        ];
+    }
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['numero', 'societe.enseigne', 'agence.nom', 'monument.nom'];
+    }
+
+    public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+    {
+        return "Devis {$record->numero}";
+    }
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return [
+            'Société' => $record->societe?->enseigne,
+            'Statut' => $record->statut,
         ];
     }
 }

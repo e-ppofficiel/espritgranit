@@ -220,4 +220,14 @@ class CommandeResource extends Resource
             'edit' => Pages\EditCommande::route('/{record}/edit'),
         ];
     }
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['numero', 'societe.enseigne', 'agence.nom'];
+    }
+
+    public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+    {
+        return "Commande {$record->numero}";
+    }
 }

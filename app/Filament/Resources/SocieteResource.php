@@ -124,4 +124,9 @@ class SocieteResource extends Resource
                 'edit' => Pages\EditSociete::route('/{record}/edit'),
             ];
         }
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['enseigne', 'raison_sociale', 'siret'];
+    }
 }

@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\DevisResource\Pages;
 
+use App\Filament\Exports\DevisExporter;
 use App\Filament\Resources\DevisResource;
 use Filament\Actions;
+use Filament\Actions\ExportAction;
 use Filament\Resources\Pages\ListRecords;
 
 class ListDevis extends ListRecords
@@ -14,6 +16,8 @@ class ListDevis extends ListRecords
     {
         return [
             Actions\CreateAction::make(),
+            ExportAction::make()
+                ->exporter(DevisExporter::class),
         ];
     }
 }

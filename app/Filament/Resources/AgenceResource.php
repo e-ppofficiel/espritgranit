@@ -183,4 +183,9 @@ class AgenceResource extends Resource
             'edit' => Pages\EditAgence::route('/{record}/edit'),
         ];
     }
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['nom', 'societe.enseigne'];
+    }
 }

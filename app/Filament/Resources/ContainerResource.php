@@ -134,4 +134,9 @@ class ContainerResource extends Resource
             'edit' => Pages\EditContainer::route('/{record}/edit'),
         ];
     }
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['reference'];
+    }
 }
