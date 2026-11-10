@@ -419,10 +419,27 @@
                 });
             };
 
+            // Couleur d'origine des matériaux passés au noir (clé : index du matériau dans le modèle),
+            // pour pouvoir la restaurer quand aucun granit n'a encore été choisi.
+            const couleursOrigine = new Map();
+
             const mettreNoir = (materiaux) => {
                 materiaux.forEach(material => {
                     if (material.pbrMetallicRoughness) {
+                        const cle = modelViewer.model.materials.indexOf(material);
+                        if (!couleursOrigine.has(cle)) {
+                            couleursOrigine.set(cle, (material.pbrMetallicRoughness.baseColorFactor || [1, 1, 1, 1]).slice());
+                        }
                         material.pbrMetallicRoughness.setBaseColorFactor([0, 0, 0, 1]);
+                    }
+                });
+            };
+
+            const restaurerCouleurOrigine = (materiaux) => {
+                materiaux.forEach(material => {
+                    const origine = couleursOrigine.get(modelViewer.model.materials.indexOf(material));
+                    if (origine && material.pbrMetallicRoughness) {
+                        material.pbrMetallicRoughness.setBaseColorFactor(origine);
                     }
                 });
             };
@@ -433,6 +450,8 @@
                     mettreNoir(materiauxBicolor);
                 } else if (currentTexture) {
                     appliquerTextureSur(materiauxBicolor, currentTexture);
+                } else {
+                    restaurerCouleurOrigine(materiauxBicolor);
                 }
             };
 
@@ -552,4 +571,7 @@
             });
         });
     </script>
+
+    {{-- Traceur de diagnostic : visible uniquement avec ?debug=1 et un role admin --}}
+    @include('components.configurateur.debug-panel')
 </div>

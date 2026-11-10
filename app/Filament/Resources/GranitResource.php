@@ -47,6 +47,9 @@ class GranitResource extends Resource
                     ->default(0),
                 Forms\Components\Textarea::make('restrictions')
                     ->columnSpanFull(),
+                Forms\Components\View::make('filament.forms.components.granit-apercu-loupe')
+                    ->viewData(fn (?\Illuminate\Database\Eloquent\Model $record) => ['granitRecord' => $record])
+                    ->columnSpanFull(),
             ]);
     }
 
