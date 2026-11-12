@@ -268,12 +268,36 @@ class GlbInspector
         }
         unset($infos);
 
+        // Textures embarquées et échelle des UV : le configurateur applique SA texture de granit, les images
+        // exportées par KeyShot ne servent à rien (et pèsent souvent 10 Mo+). Le repère eg_uv_metres est posé
+        // par « tools/eg-glb optimiser » : il indique que 1 unité UV = 1 mètre (grain homogène sur toutes les faces).
+        $nbImages = count($json['images'] ?? []);
+        $octetsImages = 0;
+        foreach ($json['images'] ?? [] as $image) {
+            if (isset($image['bufferView'])) {
+                $octetsImages += (int) ($json['bufferViews'][$image['bufferView']]['byteLength'] ?? 0);
+            }
+        }
+        $uvMetres = (bool) ($json['extras']['eg_uv_metres'] ?? false);
+
+        if (! $uvMetres) {
+            $problemes[] = [
+                'niveau' => 'alerte',
+                'message' => 'Fichier non optimisé pour le rendu réaliste : les UV ne sont pas à l\'échelle réelle (la texture paraîtra étirée et de taille différente selon les faces)'
+                    . ($nbImages > 0 ? ", et {$nbImages} texture(s) embarquée(s) pèsent " . number_format($octetsImages / 1048576, 1, ',', ' ') . ' Mo pour rien' : '')
+                    . '. Lancer : node tools/eg-glb/eg-glb.mjs optimiser <fichier.glb>, puis réimporter le fichier produit.',
+            ];
+        }
+
         return [
             'fichier' => $chemin,
             'taille_octets' => filesize($chemin),
             'generateur' => $json['asset']['generator'] ?? null,
             'version_gltf' => $json['asset']['version'] ?? null,
             'nb_materiaux' => count($materiaux),
+            'nb_images' => $nbImages,
+            'octets_images' => $octetsImages,
+            'uv_metres' => $uvMetres,
             'materiaux' => $lignes,
             'familles' => $familles,
             'problemes' => $problemes,

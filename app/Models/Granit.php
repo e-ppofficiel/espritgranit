@@ -16,6 +16,7 @@ class Granit extends Model
         'reference_interne',
         'image',
         'image_vignette',
+        'echantillon_cm',
         'pays',
         'actif',
         'ordre_affichage',

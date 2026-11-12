@@ -1,5 +1,21 @@
 @php
     $glbUrl = $monument->fichier_3d ? asset('storage/' . $monument->fichier_3d) : null;
+
+    // Rendu réaliste (voir config/configurateur.php) : mettre 'rendu_realiste' à false pour retrouver
+    // exactement l'ancien comportement (sans éclairage studio, sans échelle de grain, sans finitions).
+    $renduRealiste = (bool) config('configurateur.rendu_realiste', true);
+    $envHdr = ($renduRealiste && file_exists(public_path('configurateur/studio.hdr')))
+        ? asset('configurateur/studio.hdr')
+        : null;
+    $exposition = (float) config('configurateur.exposition', 1.5);
+    $echantillonDefaut = (float) config('configurateur.echantillon_defaut_cm', 30);
+    $finitions = config('configurateur.finitions', [
+        'SEMELLE-B' => ['rugosite' => 0.85],
+        'SEMELLE-P' => ['rugosite' => 0.3],
+        'SEMELLE' => ['rugosite' => 0.6],
+        'BICOLOR' => ['rugosite' => 0.08],
+        'GRANIT' => ['rugosite' => 0.12],
+    ]);
 @endphp
 
 <div wire:ignore>
@@ -296,6 +312,11 @@
                           camera-controls
                           touch-action="pan-y"
                           shadow-intensity="1"
+                          @if($envHdr)
+                          environment-image="{{ $envHdr }}"
+                          exposure="{{ $exposition }}"
+                          tone-mapping="neutral"
+                          @endif
                           min-camera-orbit="auto 15deg auto"
                           max-camera-orbit="auto 90deg auto"
                           camera-orbit="0deg 75deg 60%"
@@ -374,9 +395,16 @@
                 <div id="config-granit-grid">
                     @foreach($granits as $granit)
                         @if($granit->image)
+                            @php
+                                // Taille réelle (cm) de l'échantillon photographié ; colonne ajoutée par la migration du rendu réaliste.
+                                $echantillon = array_key_exists('echantillon_cm', $granit->getAttributes())
+                                    ? $granit->echantillon_cm
+                                    : null;
+                            @endphp
                             <button type="button"
                                     class="config-granit-swatch"
                                     data-texture="{{ asset('storage/' . $granit->image) }}"
+                                    data-echantillon="{{ $echantillon ?: $echantillonDefaut }}"
                                     data-nom="{{ $granit->nom_commercial }}">
                                 <img src="{{ asset('storage/' . ($granit->image_vignette ?? $granit->image)) }}" alt="{{ $granit->nom_commercial }}">
                                 <span>{{ $granit->nom_commercial }}</span>
@@ -403,6 +431,79 @@
             if (!modelViewer) return;
 
             let currentTexture = null;
+
+            // ==========================================
+            // RENDU RÉALISTE (grain à l'échelle réelle + finitions)
+            // ==========================================
+            const RENDU_REALISTE = @json($renduRealiste);
+            const ECHANTILLON_DEFAUT_CM = @json($echantillonDefaut);
+            const FINITIONS = @json($finitions);
+
+            // Un .glb passé dans « eg-glb optimiser » porte le repère eg_uv_metres : ses UV sont en mètres.
+            // On ne lit que le début du fichier (en-tête + bloc JSON), jamais le .glb entier.
+            const lireMarqueurGlb = async (url) => {
+                try {
+                    const rep = await fetch(url, { headers: { Range: 'bytes=0-262143' } });
+                    if (!rep.ok || !rep.body) return false;
+                    const lecteur = rep.body.getReader();
+                    let recu = new Uint8Array(0);
+                    let besoin = 20;
+                    let json = null;
+                    while (recu.length < besoin) {
+                        const { done, value } = await lecteur.read();
+                        if (done) break;
+                        const suite = new Uint8Array(recu.length + value.length);
+                        suite.set(recu);
+                        suite.set(value, recu.length);
+                        recu = suite;
+                        if (besoin === 20 && recu.length >= 20) {
+                            const vue = new DataView(recu.buffer);
+                            if (vue.getUint32(0, true) !== 0x46546C67) break; // pas « glTF »
+                            besoin = 20 + vue.getUint32(12, true);
+                        }
+                    }
+                    lecteur.cancel().catch(() => {});
+                    if (besoin > 20 && recu.length >= besoin) {
+                        json = JSON.parse(new TextDecoder().decode(recu.subarray(20, besoin)));
+                    }
+                    return !!(json && json.extras && json.extras.eg_uv_metres);
+                } catch (erreur) {
+                    console.warn('[configurateur] lecture du repère UV impossible :', erreur);
+                    return false;
+                }
+            };
+            const uvMetresPret = RENDU_REALISTE ? lireMarqueurGlb(modelViewer.src) : Promise.resolve(false);
+
+            // Une unité UV = 1 m : la texture (un échantillon de N cm) est répétée 100/N fois par mètre.
+            let echelleCourante = null;
+
+            const definirEchelle = (echantillonCm) => {
+                const cm = parseFloat(echantillonCm) > 0 ? parseFloat(echantillonCm) : ECHANTILLON_DEFAUT_CM;
+                const repetitions = 100 / cm;
+                echelleCourante = { u: repetitions, v: repetitions };
+            };
+
+            // model-viewer remet l'échelle de la texture à 1×1 à CHAQUE setTexture (il reprend celle de
+            // l'emplacement du matériau) : il faut donc la réappliquer après chaque série de setTexture.
+            const reappliquerEchelle = () => {
+                if (echelleCourante && currentTexture) {
+                    currentTexture.sampler.setScale(echelleCourante);
+                }
+            };
+
+            // Rugosité / métal par famille de matériau (le .glb optimisé ne porte plus de texture de rugosité).
+            const appliquerFinitions = () => {
+                const prefixes = Object.keys(FINITIONS);
+                modelViewer.model.materials.forEach(material => {
+                    if (!material.name || !material.pbrMetallicRoughness) return;
+                    const nom = material.name.trim().toUpperCase();
+                    const prefixe = prefixes.find(p => nom.startsWith(p.toUpperCase()));
+                    if (!prefixe) return;
+                    const finition = FINITIONS[prefixe];
+                    material.pbrMetallicRoughness.setRoughnessFactor(finition.rugosite);
+                    material.pbrMetallicRoughness.setMetallicFactor(finition.metal || 0);
+                });
+            };
 
             const getMateriaux = (prefixe) => modelViewer.model.materials.filter(
                 mat => mat.name && mat.name.trim().toUpperCase().startsWith(prefixe)
@@ -450,6 +551,7 @@
                     mettreNoir(materiauxBicolor);
                 } else if (currentTexture) {
                     appliquerTextureSur(materiauxBicolor, currentTexture);
+                    reappliquerEchelle();
                 } else {
                     restaurerCouleurOrigine(materiauxBicolor);
                 }
@@ -514,6 +616,16 @@
             }
 
             modelViewer.addEventListener('load', () => {
+                uvMetresPret.then(uvMetres => {
+                    if (!uvMetres) return;
+                    appliquerFinitions();
+                    // Le .glb optimisé n'a plus de texture embarquée : on sélectionne un premier granit
+                    // pour ne pas afficher un monument blanc au chargement.
+                    if (!document.querySelector('.config-granit-swatch.selected') && swatches[0]) {
+                        swatches[0].click();
+                    }
+                });
+
                 swatches.forEach(swatch => {
                     swatch.addEventListener('click', async (event) => {
                         const btn = event.currentTarget;
@@ -521,10 +633,14 @@
                         const nom = btn.dataset.nom;
 
                         currentTexture = await modelViewer.createTexture(texturePath);
+                        if (await uvMetresPret) {
+                            definirEchelle(btn.dataset.echantillon);
+                        }
 
                         appliquerTextureSur(getMateriaux('GRANIT'), currentTexture);
                         appliquerTextureSur(getMateriaux('SEMELLE'), currentTexture);
                         mettreAJourBicolor();
+                        reappliquerEchelle();
                         mettreAJourSemelleVisibilite();
 
                         swatches.forEach(s => s.classList.remove('selected'));

@@ -38,6 +38,13 @@ class GranitResource extends Resource
                     ->directory('granits')
                     ->visibility('public')
                     ->helperText('Cette image sert de texture haute qualité dans le configurateur 3D. Une vignette compressée est générée automatiquement pour l\'affichage des listes, sans toucher à cette image source.'),
+                Forms\Components\TextInput::make('echantillon_cm')
+                    ->label('Taille réelle de l\'échantillon (cm)')
+                    ->helperText('Côté du carré photographié, pour régler la taille du grain dans le configurateur 3D. Plus petit = grain plus fin sur le monument. Vide = 30 cm.')
+                    ->numeric()
+                    ->minValue(5)
+                    ->maxValue(200)
+                    ->suffix('cm'),
                 Forms\Components\TextInput::make('pays')
                     ->maxLength(255),
                 Forms\Components\Toggle::make('actif')

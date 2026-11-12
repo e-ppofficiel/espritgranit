@@ -159,6 +159,8 @@ class InspecterGlb extends Command
         $this->line('Taille         : ' . number_format($r['taille_octets'] / 1048576, 2, ',', ' ') . ' Mo');
         $this->line('Généré par     : ' . ($r['generateur'] ?? 'inconnu') . ' (glTF ' . ($r['version_gltf'] ?? '?') . ')');
         $this->line("Matériaux      : {$r['nb_materiaux']}");
+        $this->line('Textures       : ' . $r['nb_images'] . ' image(s) embarquée(s), ' . number_format($r['octets_images'] / 1048576, 2, ',', ' ') . ' Mo');
+        $this->line('UV en mètres   : ' . ($r['uv_metres'] ? 'oui (fichier optimisé)' : 'non (voir tools/eg-glb)'));
         $this->newLine();
 
         // Plusieurs matériaux peuvent porter exactement le même nom (KeyShot en exporte parfois
