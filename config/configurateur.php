@@ -59,6 +59,16 @@ return [
         'rugosite_mate' => 0.55,
     ],
 
+    // Optimisation automatique des .glb envoyés dans l'admin (tools/eg-glb, nécessite Node ≥ 20).
+    //   optimisation_auto : false pour désactiver (le fichier est alors enregistré tel quel) — ou EG_GLB_AUTO=false dans .env ;
+    //   node              : chemin de l'exécutable Node si la recherche automatique échoue (EG_NODE_BIN dans .env) ;
+    //   delai_secondes    : durée maximale d'une optimisation.
+    'glb' => [
+        'optimisation_auto' => env('EG_GLB_AUTO', true),
+        'node' => env('EG_NODE_BIN'),
+        'delai_secondes' => 300,
+    ],
+
     // Rugosité par famille de matériau (0 = miroir, 1 = mat). Le premier préfixe qui correspond au nom du matériau est utilisé.
     // 'brillance' => true : la brillance du granit choisi s'applique (surfaces polies). La bouchardée reste mate.
     // Anciennes valeurs (reflets plus flous) : SEMELLE-P 0.30, BICOLOR 0.08, GRANIT 0.12.

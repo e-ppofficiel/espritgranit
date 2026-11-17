@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\GlbOptimiseur;
 use Illuminate\Database\Eloquent\Model;
 
 class Monument extends Model
@@ -23,6 +24,21 @@ class Monument extends Model
     protected $casts = [
         'actif' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        // Fichier 3D envoyé (création, ou remplacement d'un fichier existant) : optimisation automatique.
+        // Ne bloque jamais l'enregistrement (voir GlbOptimiseur::traiterMonument).
+        static::saved(function (Monument $monument) {
+            if (! $monument->fichier_3d || ! GlbOptimiseur::activee()) {
+                return;
+            }
+
+            if ($monument->wasRecentlyCreated || $monument->wasChanged('fichier_3d')) {
+                GlbOptimiseur::traiterMonument($monument);
+            }
+        });
+    }
 
     public function images()
     {

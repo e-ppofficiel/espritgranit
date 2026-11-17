@@ -49,7 +49,7 @@ class MonumentResource extends Resource
                     ->acceptedFileTypes(['model/gltf-binary', 'application/octet-stream', '.glb'])
                     ->directory('monuments/3d')
                     ->visibility('public')
-                    ->helperText('Fichier au format .glb uniquement'),
+                    ->helperText('Fichier au format .glb uniquement. Il est optimisé automatiquement à l\'enregistrement (textures embarquées retirées, grain à l\'échelle réelle) ; l\'original est conservé.'),
                 Forms\Components\FileUpload::make('image_principale')
                     ->image()
                     ->imageEditor()
