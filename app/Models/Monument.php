@@ -73,4 +73,42 @@ class Monument extends Model
     {
         return $this->belongsToMany(Tag::class, 'monument_tag')->withTimestamps();
     }
+
+    public function devis()
+    {
+        return $this->hasMany(Devis::class);
+    }
+
+    public function commandes()
+    {
+        return $this->hasMany(Commande::class);
+    }
+
+    /**
+     * Parmi les monuments donnés, ids de ceux qui figurent dans au moins un devis ou une commande.
+     * Les clés étrangères devis.monument_id et commandes.monument_id sont en RESTRICT : ces monuments
+     * ne peuvent pas être supprimés sans casser l'historique (ils peuvent en revanche être désactivés).
+     *
+     * @param  array<int, int|string>  $ids
+     * @return array<int, int>
+     */
+    public static function idsUtilises(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        return collect(Devis::whereIn('monument_id', $ids)->pluck('monument_id'))
+            ->merge(Commande::whereIn('monument_id', $ids)->pluck('monument_id'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /** Vrai si le monument n'est présent dans aucun devis ni aucune commande. */
+    public function estSupprimable(): bool
+    {
+        return self::idsUtilises([$this->getKey()]) === [];
+    }
 }

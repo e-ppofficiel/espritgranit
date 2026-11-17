@@ -8,9 +8,12 @@ use App\Models\Monument;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Navigation\NavigationItem;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 
 class MonumentResource extends Resource
 {
@@ -149,7 +152,77 @@ class MonumentResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    // Suppression sécurisée : un monument présent dans un devis ou une commande ne peut pas être
+                    // supprimé (clés étrangères en RESTRICT). Il est conservé, et signalé dans la notification.
+                    Tables\Actions\BulkAction::make('supprimer_securise')
+                        ->label('Supprimer')
+                        ->icon('heroicon-m-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalIcon('heroicon-o-trash')
+                        ->modalHeading('Supprimer les monuments sélectionnés')
+                        ->modalDescription('Seuls les monuments qui ne figurent dans aucun devis ni aucune commande seront supprimés. Les autres seront conservés : utilisez « Désactiver » pour les retirer du catalogue.')
+                        ->modalSubmitActionLabel('Supprimer')
+                        ->action(function (Collection $records): void {
+                            $utilises = Monument::idsUtilises($records->modelKeys());
+                            $supprimes = 0;
+                            $conserves = [];
+
+                            foreach ($records as $monument) {
+                                if (in_array((int) $monument->getKey(), $utilises, true)) {
+                                    $conserves[] = $monument->reference_interne ?: $monument->nom;
+                                    continue;
+                                }
+
+                                try {
+                                    $monument->delete();
+                                    $supprimes++;
+                                } catch (QueryException $e) {
+                                    // Autre contrainte non prévue : on ne bloque pas le lot, on conserve ce monument.
+                                    report($e);
+                                    $conserves[] = $monument->reference_interne ?: $monument->nom;
+                                }
+                            }
+
+                            $notification = Notification::make();
+
+                            if ($conserves === []) {
+                                $notification
+                                    ->title($supprimes . ' monument(s) supprimé(s)')
+                                    ->success();
+                            } else {
+                                $liste = implode(', ', array_slice($conserves, 0, 15)) . (count($conserves) > 15 ? '…' : '');
+                                $notification
+                                    ->title($supprimes . ' supprimé(s), ' . count($conserves) . ' conservé(s)')
+                                    ->body('Conservés car utilisés dans des devis ou des commandes : ' . e($liste) . '. Sélectionnez-les puis utilisez « Désactiver » pour les retirer du catalogue.')
+                                    ->persistent();
+
+                                $supprimes > 0 ? $notification->warning() : $notification->danger();
+                            }
+
+                            $notification->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+
+                    Tables\Actions\BulkAction::make('desactiver')
+                        ->label('Désactiver')
+                        ->icon('heroicon-m-eye-slash')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Désactiver les monuments sélectionnés')
+                        ->modalDescription('Les monuments désactivés ne sont pas supprimés : les devis et commandes existants sont conservés. Vous pourrez les réactiver depuis leur fiche.')
+                        ->modalSubmitActionLabel('Désactiver')
+                        ->action(function (Collection $records): void {
+                            $nombre = Monument::whereIn('id', $records->modelKeys())
+                                ->where('actif', true)
+                                ->update(['actif' => false]);
+
+                            Notification::make()
+                                ->title($nombre . ' monument(s) désactivé(s)')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
                 ]),
             ]);
     }

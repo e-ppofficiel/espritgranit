@@ -17,6 +17,8 @@ class Granit extends Model
         'image',
         'image_vignette',
         'echantillon_cm',
+        'brillance',
+        'luminosite',
         'pays',
         'actif',
         'ordre_affichage',
@@ -26,6 +28,28 @@ class Granit extends Model
     protected $casts = [
         'actif' => 'boolean',
     ];
+
+    // Réglages de rendu 3D : un champ numérique vidé dans Filament arrive en chaîne vide, que MySQL refuse
+    // dans une colonne entière. On le range en NULL (= valeur par défaut du configurateur).
+    public function setEchantillonCmAttribute($valeur): void
+    {
+        $this->attributes['echantillon_cm'] = self::entierOuNull($valeur);
+    }
+
+    public function setBrillanceAttribute($valeur): void
+    {
+        $this->attributes['brillance'] = self::entierOuNull($valeur);
+    }
+
+    public function setLuminositeAttribute($valeur): void
+    {
+        $this->attributes['luminosite'] = self::entierOuNull($valeur);
+    }
+
+    private static function entierOuNull($valeur): ?int
+    {
+        return ($valeur === null || $valeur === '' || ! is_numeric($valeur)) ? null : (int) round((float) $valeur);
+    }
 
     public function getActivitylogOptions(): LogOptions
     {

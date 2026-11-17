@@ -45,6 +45,22 @@ class GranitResource extends Resource
                     ->minValue(5)
                     ->maxValue(200)
                     ->suffix('cm'),
+                Forms\Components\TextInput::make('brillance')
+                    ->label('Brillance (0 à 100)')
+                    ->helperText('Aspect de la pierre polie dans le configurateur 3D : 0 = satiné, 100 = poli net (rendu par défaut). Vide = 100. N\'agit que sur les monuments dont le fichier 3D a été optimisé.')
+                    ->numeric()
+                    ->minValue(0)
+                    ->maxValue(100)
+                    ->step(1)
+                    ->suffix('/ 100'),
+                Forms\Components\TextInput::make('luminosite')
+                    ->label('Luminosité de la texture (%)')
+                    ->helperText('Éclaircit ou fonce la texture dans le configurateur 3D : 100 = inchangée, 80 = plus foncé, 120 = plus clair. Vide = 100.')
+                    ->numeric()
+                    ->minValue(50)
+                    ->maxValue(150)
+                    ->step(1)
+                    ->suffix('%'),
                 Forms\Components\TextInput::make('pays')
                     ->maxLength(255),
                 Forms\Components\Toggle::make('actif')

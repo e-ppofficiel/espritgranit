@@ -4,5 +4,6 @@
         :granits="$granits"
         :semelle-types="$semelleTypes"
         :semelle-dimensions="$semelleDimensions"
+        :peut-regler="$this->peutReglerGranits()"
     />
 </x-filament-panels::page>

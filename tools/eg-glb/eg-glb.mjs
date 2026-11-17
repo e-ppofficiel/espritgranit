@@ -3,7 +3,8 @@
  * eg-glb — outils en ligne de commande pour le configurateur 3D EspritGranit.
  *
  *   node eg-glb.mjs optimiser <fichier.glb> [--sortie sortie.glb] [--garder-draco] [--a-blanc]
- *   node eg-glb.mjs tuilable  <photo.jpg>   [--sortie sortie.webp] [--taille 2048] [--bande 0.3] [--qualite 88] [--sans-aplatir]
+ *   node eg-glb.mjs tuilable  <photo.jpg>   [--sortie sortie.webp] [--taille 2048] [--bande 0.3] [--qualite 88] [--sans-aplatir] [--forcer-fondu]
+ *   node eg-glb.mjs tuilable  --dossier <dossier> [--sortie-dossier <dossier>] [--forcer] [--a-blanc] (mode lot : toutes les images du dossier)
  *
  * optimiser : retire les textures embarquées (le site applique la texture du granit choisi),
  *             convertit les textures uniformes de rugosité/métal en facteurs, et remet les
@@ -25,8 +26,11 @@ function aide(code = 0) {
   console.log(`Usage :
   node eg-glb.mjs optimiser <fichier.glb> [--sortie <fichier.glb>] [--garder-draco] [--a-blanc]
   node eg-glb.mjs tuilable  <photo>       [--sortie <fichier.webp>] [--taille 2048] [--bande 0.3] [--qualite 88] [--sans-aplatir]
+  node eg-glb.mjs tuilable  --dossier <dossier> [--sortie-dossier <dossier>] [--forcer] [--a-blanc]
 
   --a-blanc       (optimiser) n'écrit rien : affiche seulement ce qui serait fait
+  --dossier       (tuilable) traite toutes les images du dossier ; sortie dans <dossier>/tuilables/ par défaut
+  --forcer        (tuilable --dossier) refait aussi les fichiers déjà produits
   --garder-draco  (optimiser) recompresse la géométrie en Draco (par défaut : non compressée, plus simple à charger)`);
   process.exit(code);
 }
@@ -211,15 +215,11 @@ function fenetre(n, bande) {
   return w;
 }
 
-async function tuilable(fichier, opt) {
-  if (!fichier || !fs.existsSync(fichier)) { console.error('Image introuvable : ' + fichier); process.exit(1); }
+/** Fabrique une texture sans raccord. Renvoie les chiffres de contrôle (pas d'affichage). */
+const SEUIL_DEJA_SANS_RACCORD = 1.3; // une photo brute est à ×2,4 ou plus ; une texture déjà tuilable est à ~×1,0
+
+async function fabriquerTuilable(fichier, sortie, { N, bande, qualite, aplatir, forcerFondu }) {
   const sharp = (await import('sharp')).default;
-  const N = Math.max(256, parseInt(opt.taille || '2048', 10));
-  const bande = Math.min(0.9, Math.max(0.05, parseFloat(opt.bande || '0.3')));
-  const qualite = parseInt(opt.qualite || '88', 10);
-  const sortie = typeof opt.sortie === 'string'
-    ? opt.sortie
-    : path.join(path.dirname(fichier), path.basename(fichier, path.extname(fichier)) + '.tuilable.webp');
 
   // carré central, redimensionné
   const meta = await sharp(fichier).metadata();
@@ -228,8 +228,32 @@ async function tuilable(fichier, opt) {
     .resize(N, N, { kernel: 'lanczos3' }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const src = Float32Array.from(data);
 
+  // contrôle chiffré : écart bord/bord comparé à l'écart entre pixels voisins
+  const g = (buf, x, y) => (buf[(y * N + x) * 3] + buf[(y * N + x) * 3 + 1] + buf[(y * N + x) * 3 + 2]) / 3;
+  const ecart = (buf) => {
+    let bord = 0, voisin = 0;
+    for (let i = 0; i < N; i++) {
+      bord += Math.abs(g(buf, 0, i) - g(buf, N - 1, i)) + Math.abs(g(buf, i, 0) - g(buf, i, N - 1));
+      voisin += Math.abs(g(buf, 0, i) - g(buf, 1, i)) + Math.abs(g(buf, i, 0) - g(buf, i, 1));
+    }
+    return { bord: bord / (2 * N), voisin: voisin / (2 * N) };
+  };
+  const avant = ecart(Buffer.from(data));
+  const ratioAvant = avant.bord / Math.max(avant.voisin, 1e-6);
+
+  // Texture déjà sans raccord (ex. un fichier déjà passé par cet outil) : on la convertit sans la re-fondre,
+  // sinon le fondu superposerait deux copies de l'image et dégraderait le résultat.
+  if (ratioAvant <= SEUIL_DEJA_SANS_RACCORD && !forcerFondu) {
+    fs.mkdirSync(path.dirname(sortie), { recursive: true });
+    await sharp(Buffer.from(data), { raw: { width: N, height: N, channels: 3 } }).webp({ quality: qualite }).toFile(sortie);
+    return {
+      avant, apres: avant, ratioAvant, ratioApres: ratioAvant, dejaSansRaccord: true,
+      octets: fs.statSync(sortie).size, largeurSource: meta.width, hauteurSource: meta.height,
+    };
+  }
+
   // 1) aplatir l'éclairage (dégradé basse fréquence = cause n°1 de raccords visibles)
-  if (!opt['sans-aplatir']) {
+  if (aplatir) {
     const flou = await sharp(Buffer.from(data), { raw: { width: N, height: N, channels: 3 } }).blur(Math.max(8, N / 8)).raw().toBuffer();
     const moy = [0, 0, 0];
     for (let i = 0; i < N * N; i++) for (let k = 0; k < 3; k++) moy[k] += flou[i * 3 + k];
@@ -253,24 +277,113 @@ async function tuilable(fichier, opt) {
       }
     }
   }
+  fs.mkdirSync(path.dirname(sortie), { recursive: true });
   await sharp(sortieBuf, { raw: { width: N, height: N, channels: 3 } }).webp({ quality: qualite }).toFile(sortie);
 
-  // 3) contrôle chiffré : écart bord/bord comparé à l'écart entre pixels voisins
-  const g = (buf, x, y) => (buf[(y * N + x) * 3] + buf[(y * N + x) * 3 + 1] + buf[(y * N + x) * 3 + 2]) / 3;
-  const ecart = (buf) => {
-    let bord = 0, voisin = 0;
-    for (let i = 0; i < N; i++) {
-      bord += Math.abs(g(buf, 0, i) - g(buf, N - 1, i)) + Math.abs(g(buf, i, 0) - g(buf, i, N - 1));
-      voisin += Math.abs(g(buf, 0, i) - g(buf, 1, i)) + Math.abs(g(buf, i, 0) - g(buf, i, 1));
-    }
-    return { bord: bord / (2 * N), voisin: voisin / (2 * N) };
+  // 3) contrôle chiffré après traitement
+  const apres = ecart(sortieBuf);
+  return {
+    avant, apres, ratioAvant, dejaSansRaccord: false,
+    ratioApres: apres.bord / Math.max(apres.voisin, 1e-6),
+    octets: fs.statSync(sortie).size,
+    largeurSource: meta.width, hauteurSource: meta.height,
   };
-  const avant = ecart(Buffer.from(data)), apres = ecart(sortieBuf);
+}
+
+function optionsTuilable(opt) {
+  return {
+    N: Math.max(256, parseInt(opt.taille || '2048', 10)),
+    bande: Math.min(0.9, Math.max(0.05, parseFloat(opt.bande || '0.3'))),
+    qualite: parseInt(opt.qualite || '88', 10),
+    aplatir: !opt['sans-aplatir'],
+    forcerFondu: !!opt['forcer-fondu'],
+  };
+}
+
+async function tuilable(fichier, opt) {
+  if (opt.dossier) return tuilableLot(typeof opt.dossier === 'string' ? opt.dossier : fichier, opt);
+  if (!fichier || !fs.existsSync(fichier)) { console.error('Image introuvable : ' + fichier); process.exit(1); }
+  const sortie = typeof opt.sortie === 'string'
+    ? opt.sortie
+    : path.join(path.dirname(fichier), path.basename(fichier, path.extname(fichier)) + '.tuilable.webp');
+
+  const r = await fabriquerTuilable(fichier, sortie, optionsTuilable(opt));
+  if (r.dejaSansRaccord) {
+    console.log(`Cette image est déjà sans raccord (×${r.ratioAvant.toFixed(1)}) : convertie sans fondu. (--forcer-fondu pour traiter quand même)`);
+    console.log(`→ ${sortie}  (${optionsTuilable(opt).N}×${optionsTuilable(opt).N}, ${taille(r.octets)})`);
+    return;
+  }
   console.log(`Raccord (écart bord-à-bord / écart entre pixels voisins) :`);
-  console.log(`  avant : ${avant.bord.toFixed(1)} / ${avant.voisin.toFixed(1)}  (×${(avant.bord / avant.voisin).toFixed(1)})`);
-  console.log(`  après : ${apres.bord.toFixed(1)} / ${apres.voisin.toFixed(1)}  (×${(apres.bord / apres.voisin).toFixed(1)})  — proche de ×1 = sans raccord visible`);
-  console.log(`→ ${sortie}  (${N}×${N}, ${taille(fs.statSync(sortie).size)})`);
+  console.log(`  avant : ${r.avant.bord.toFixed(1)} / ${r.avant.voisin.toFixed(1)}  (×${r.ratioAvant.toFixed(1)})`);
+  console.log(`  après : ${r.apres.bord.toFixed(1)} / ${r.apres.voisin.toFixed(1)}  (×${r.ratioApres.toFixed(1)})  — proche de ×1 = sans raccord visible`);
+  console.log(`→ ${sortie}  (${optionsTuilable(opt).N}×${optionsTuilable(opt).N}, ${taille(r.octets)})`);
   console.log('Importez ce fichier comme image du granit (il sert aussi de vignette).');
+}
+
+/* ───────────────────────── tuilable --dossier (mode lot) ───────────────────────── */
+
+const EXTENSIONS_IMAGE = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff']);
+
+async function tuilableLot(dossier, opt) {
+  if (!dossier || !fs.existsSync(dossier) || !fs.statSync(dossier).isDirectory()) {
+    console.error('Dossier introuvable : ' + dossier);
+    process.exit(1);
+  }
+  const sortieDossier = typeof opt['sortie-dossier'] === 'string' ? opt['sortie-dossier'] : path.join(dossier, 'tuilables');
+  const forcer = !!opt.forcer;
+  const options = optionsTuilable(opt);
+
+  const fichiers = fs.readdirSync(dossier, { withFileTypes: true })
+    .filter((e) => e.isFile() && EXTENSIONS_IMAGE.has(path.extname(e.name).toLowerCase()))
+    .map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b));
+
+  if (!fichiers.length) { console.log('Aucune image (jpg, png, webp, tif) dans ' + dossier); return; }
+  console.log(`${fichiers.length} image(s) dans ${dossier}\nSortie : ${sortieDossier}  (les originaux ne sont jamais modifiés)\n`);
+
+  const lignes = [];
+  const sortiesPrises = new Set();
+  let i = 0;
+  for (const nom of fichiers) {
+    i++;
+    const base = path.basename(nom, path.extname(nom));
+    const entree = path.join(dossier, nom);
+    // deux fichiers de même nom et d'extensions différentes (a.jpg / a.png) : le second garde son extension
+    let sortie = path.join(sortieDossier, base + '.tuilable.webp');
+    if (sortiesPrises.has(sortie)) sortie = path.join(sortieDossier, nom + '.tuilable.webp');
+    sortiesPrises.add(sortie);
+    const etiquette = `[${String(i).padStart(String(fichiers.length).length)}/${fichiers.length}] ${nom}`;
+
+    if (/\.tuilable$/i.test(base)) { lignes.push({ nom, statut: 'ignoré', detail: 'déjà une texture tuilable' }); console.log(`${etiquette} … ignoré (déjà tuilable)`); continue; }
+    if (fs.existsSync(sortie) && !forcer) { lignes.push({ nom, statut: 'ignoré', detail: 'sortie existante (--forcer pour refaire)' }); console.log(`${etiquette} … ignoré (sortie existante)`); continue; }
+    if (opt['a-blanc']) { lignes.push({ nom, statut: 'à faire', detail: '' }); console.log(`${etiquette} … à faire`); continue; }
+
+    process.stdout.write(`${etiquette} … `);
+    try {
+      const r = await fabriquerTuilable(entree, sortie, options);
+      const net = r.ratioApres <= 1.5;
+      const texte = r.dejaSansRaccord
+        ? `ok (déjà sans raccord ×${r.ratioAvant.toFixed(1)} : converti sans fondu, ${taille(r.octets)})`
+        : `${net ? 'ok' : 'à vérifier'} (raccord ×${r.ratioAvant.toFixed(1)} → ×${r.ratioApres.toFixed(1)}, ${taille(r.octets)})`;
+      console.log(texte);
+      lignes.push({ nom, statut: net ? 'ok' : 'à vérifier', detail: `×${r.ratioAvant.toFixed(1)} → ×${r.ratioApres.toFixed(1)}`, taille: taille(r.octets), source: `${r.largeurSource}×${r.hauteurSource}` });
+    } catch (erreur) {
+      console.log('ERREUR : ' + (erreur.message || erreur).toString().split('\n')[0]);
+      lignes.push({ nom, statut: 'erreur', detail: (erreur.message || String(erreur)).split('\n')[0] });
+    }
+  }
+
+  const compte = (st) => lignes.filter((l) => l.statut === st).length;
+  console.log(`\nRésumé : ${compte('ok')} ok, ${compte('à vérifier')} à vérifier, ${compte('ignoré')} ignoré(s), ${compte('erreur')} erreur(s)` + (opt['a-blanc'] ? `, ${compte('à faire')} à faire (--a-blanc : rien n'a été écrit)` : ''));
+  const aVerifier = lignes.filter((l) => l.statut === 'à vérifier');
+  if (aVerifier.length) {
+    console.log('\nÀ vérifier à l\'œil (raccord encore visible : granit à veines ou photo très inégale ; essayez --bande 0.5) :');
+    for (const l of aVerifier) console.log('  - ' + l.nom + '  ' + l.detail);
+  }
+  if (compte('ok') + compte('à vérifier')) {
+    console.log(`\nFichiers produits dans : ${sortieDossier}\nImportez-les comme image de chaque granit, puis renseignez la taille de l'échantillon dans l'admin.`);
+  }
+  if (compte('erreur')) process.exitCode = 1;
 }
 
 /* ───────────────────────── main ───────────────────────── */
