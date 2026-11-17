@@ -69,6 +69,11 @@ class Monument extends Model
         return $this->hasMany(MonumentSemelleDimension::class)->orderBy('ordre_affichage');
     }
 
+    public function semellePrix()
+    {
+        return $this->hasMany(MonumentSemellePrix::class);
+    }
+
     public function tags()
     {
         return $this->belongsToMany(Tag::class, 'monument_tag')->withTimestamps();

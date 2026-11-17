@@ -5,8 +5,12 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\CommandeResource\Pages;
 use App\Filament\Resources\CommandeResource\RelationManagers;
 use App\Models\Commande;
+use App\Models\MonumentSemelleDimension;
+use App\Services\SemelleDevis;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -54,13 +58,83 @@ class CommandeResource extends Resource
                     ->relationship('monument', 'nom')
                     ->searchable()
                     ->preload()
-                    ->required(),
+                    ->required()
+                    ->live()
+                    ->afterStateUpdated(function (Set $set) {
+                        // les dimensions de semelle dépendent du monument : on repart d'une commande sans semelle
+                        $set('semelle_dimension_id', null);
+                        $set('semelle_libelle', null);
+                        $set('semelle_reference', null);
+                        $set('prix_semelle', null);
+                    }),
 
                 Forms\Components\Select::make('granit_id')
                     ->label('Granit')
                     ->relationship('granit', 'nom_commercial')
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->live()
+                    ->afterStateUpdated(function (Get $get, Set $set) {
+                        // le prix de la semelle dépend du granit : recalculé seulement si une semelle est choisie
+                        if ($get('semelle_dimension_id')) {
+                            static::remplirSemelle($get, $set);
+                        }
+                    }),
+
+                Forms\Components\Select::make('semelle_dimension_id')
+                    ->label('Semelle')
+                    ->options(function (Get $get) {
+                        $monumentId = $get('monument_id');
+                        if (! $monumentId) {
+                            return [];
+                        }
+
+                        return MonumentSemelleDimension::with('semelleType')
+                            ->where('monument_id', $monumentId)
+                            ->orderBy('ordre_affichage')
+                            ->orderBy('id')
+                            ->get()
+                            ->mapWithKeys(fn (MonumentSemelleDimension $d) => [$d->id => $d->libelleSelect()])
+                            ->all();
+                    })
+                    ->placeholder('Sans semelle')
+                    ->native(false)
+                    ->searchable()
+                    ->live()
+                    ->dehydrated(false) // simple aide à la saisie : la commande ne stocke que libellé, référence et prix
+                    ->afterStateHydrated(function (Forms\Components\Select $component, ?Commande $record) {
+                        // à l'édition : retrouver la dimension qui correspond à la semelle déjà enregistrée
+                        if (! $record || ! $record->semelle_reference || ! $record->monument_id) {
+                            return;
+                        }
+                        $id = MonumentSemelleDimension::where('monument_id', $record->monument_id)
+                            ->where('reference', $record->semelle_reference)
+                            ->orderBy('id')
+                            ->value('id');
+                        if ($id) {
+                            $component->state($id);
+                        }
+                    })
+                    ->afterStateUpdated(fn (Get $get, Set $set) => static::remplirSemelle($get, $set))
+                    ->helperText(function (Get $get) {
+                        $semelle = SemelleDevis::calculer(
+                            $get('monument_id') ? (int) $get('monument_id') : null,
+                            $get('granit_id') ? (int) $get('granit_id') : null,
+                            $get('semelle_dimension_id') ? (int) $get('semelle_dimension_id') : null
+                        );
+
+                        return $semelle['avertissement'] ?? 'Facultatif : choisis un monument pour voir ses semelles. Référence et prix se remplissent automatiquement.';
+                    }),
+
+                Forms\Components\Hidden::make('semelle_libelle'),
+
+                Forms\Components\TextInput::make('semelle_reference')
+                    ->label('Référence de la semelle'),
+
+                Forms\Components\TextInput::make('prix_semelle')
+                    ->label('Prix semelle')
+                    ->numeric()
+                    ->prefix('€'),
 
                 Forms\Components\TextInput::make('commande_par')
                     ->label('Commandé par'),
@@ -123,6 +197,20 @@ class CommandeResource extends Resource
             ]);
     }
 
+    /** Remplit libellé, référence et prix de la semelle d'après la dimension choisie (même calcul que le devis). */
+    protected static function remplirSemelle(Get $get, Set $set): void
+    {
+        $semelle = SemelleDevis::calculer(
+            $get('monument_id') ? (int) $get('monument_id') : null,
+            $get('granit_id') ? (int) $get('granit_id') : null,
+            $get('semelle_dimension_id') ? (int) $get('semelle_dimension_id') : null
+        );
+
+        $set('semelle_libelle', $semelle['libelle']);
+        $set('semelle_reference', $semelle['reference']);
+        $set('prix_semelle', $semelle['prix']);
+    }
+
     public static function table(Table $table): Table
     {
         return $table
@@ -137,6 +225,10 @@ class CommandeResource extends Resource
                 Tables\Columns\TextColumn::make('monument.nom')
                     ->label('Monument')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('semelle_libelle')
+                    ->label('Semelle')
+                    ->placeholder('—')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('statut')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {

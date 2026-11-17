@@ -4,6 +4,8 @@ namespace App\Filament\Pages;
 
 use App\Models\Granit;
 use App\Models\Monument;
+use App\Models\MonumentSemelleDimension;
+use App\Models\MonumentSemellePrix;
 use App\Models\Tag;
 use App\Services\ImportPrixGranitsParser;
 use Filament\Forms;
@@ -32,7 +34,9 @@ class ImportPrixGranits extends Page implements HasForms
     public function mount(): void
     {
         $this->form->fill([
+            'mode' => 'granit',
             'monument_id' => null,
+            'semelle_reference' => null,
             'texte_colle' => '',
             'lignes' => [],
         ]);
@@ -44,12 +48,46 @@ class ImportPrixGranits extends Page implements HasForms
             ->schema([
                 Forms\Components\Section::make('1. Sélection du monument et collage')
                     ->schema([
+                        Forms\Components\Radio::make('mode')
+                            ->label('Type d\'import')
+                            ->options([
+                                'granit' => 'Prix du monument (un prix par granit)',
+                                'semelle' => 'Prix d\'une semelle (un prix par granit)',
+                            ])
+                            ->default('granit')
+                            ->inline()
+                            ->live()
+                            ->disabled(fn () => $this->analyseEffectuee)
+                            ->dehydrated(),
+
                         Forms\Components\Select::make('monument_id')
                             ->label('Monument')
                             ->options(Monument::orderBy('nom')->pluck('nom', 'id'))
                             ->searchable()
                             ->preload()
                             ->required()
+                            ->live()
+                            ->disabled(fn () => $this->analyseEffectuee)
+                            ->dehydrated(),
+
+                        Forms\Components\Select::make('semelle_reference')
+                            ->label('Référence de la semelle')
+                            ->options(function (Forms\Get $get) {
+                                if (! $get('monument_id')) {
+                                    return [];
+                                }
+
+                                return MonumentSemelleDimension::where('monument_id', $get('monument_id'))
+                                    ->whereNotNull('reference')
+                                    ->distinct()
+                                    ->orderBy('reference')
+                                    ->pluck('reference', 'reference')
+                                    ->all();
+                            })
+                            ->searchable()
+                            ->visible(fn (Forms\Get $get) => $get('mode') === 'semelle')
+                            ->required(fn (Forms\Get $get) => $get('mode') === 'semelle')
+                            ->helperText('Les références viennent des dimensions de semelle du monument. Le prix collé sera enregistré pour cette référence.')
                             ->disabled(fn () => $this->analyseEffectuee)
                             ->dehydrated(),
 
@@ -95,6 +133,11 @@ class ImportPrixGranits extends Page implements HasForms
 
                                 Forms\Components\Hidden::make('nom_detecte'),
                                 Forms\Components\Hidden::make('ligne_brute'),
+                                Forms\Components\TextInput::make('poids_semelle')
+                                    ->label('Poids de la semelle (kg)')
+                                    ->numeric()
+                                    ->suffix('kg')
+                                    ->visible(fn (Forms\Get $get) => $get('../../mode') === 'semelle'),
                                 Forms\Components\Hidden::make('poids_detecte'),
                                 Forms\Components\Hidden::make('categorie_detectee'),
                                 Forms\Components\Hidden::make('pays_detecte'),
@@ -123,7 +166,13 @@ class ImportPrixGranits extends Page implements HasForms
             return;
         }
 
-        $lignes = ImportPrixGranitsParser::parse($etat['texte_colle']);
+        $mode = $etat['mode'] ?? 'granit';
+        if ($mode === 'semelle' && empty($etat['semelle_reference'])) {
+            Notification::make()->title('Sélectionne la référence de la semelle avant d\'analyser.')->danger()->send();
+            return;
+        }
+
+        $lignes = ImportPrixGranitsParser::parse($etat['texte_colle'], $mode === 'semelle' ? 'semelle' : 'monument');
 
         if (empty($lignes)) {
             Notification::make()->title('Aucune ligne exploitable détectée.')->danger()->send();
@@ -133,7 +182,9 @@ class ImportPrixGranits extends Page implements HasForms
         $this->analyseEffectuee = true;
 
         $this->form->fill([
+            'mode' => $mode,
             'monument_id' => $etat['monument_id'],
+            'semelle_reference' => $etat['semelle_reference'] ?? null,
             'texte_colle' => $etat['texte_colle'],
             'lignes' => $lignes,
         ]);
@@ -150,7 +201,9 @@ class ImportPrixGranits extends Page implements HasForms
     {
         $this->analyseEffectuee = false;
         $this->form->fill([
+            'mode' => 'granit',
             'monument_id' => null,
+            'semelle_reference' => null,
             'texte_colle' => '',
             'lignes' => [],
         ]);
@@ -163,6 +216,11 @@ class ImportPrixGranits extends Page implements HasForms
 
         if (! $monument) {
             Notification::make()->title('Monument introuvable.')->danger()->send();
+            return;
+        }
+
+        if (($etat['mode'] ?? 'granit') === 'semelle') {
+            $this->validerImportSemelle($monument, (string) ($etat['semelle_reference'] ?? ''), $etat['lignes'] ?? []);
             return;
         }
 
@@ -203,6 +261,44 @@ class ImportPrixGranits extends Page implements HasForms
 
         Notification::make()
             ->title("{$reussies} tarif(s) importé(s) sur « {$monument->nom} »")
+            ->success()
+            ->send();
+
+        $this->reinitialiser();
+    }
+
+    /** Enregistre les prix d'une semelle (une référence) pour les granits collés, sans toucher au prix du monument. */
+    protected function validerImportSemelle(Monument $monument, string $reference, array $lignes): void
+    {
+        if ($reference === '') {
+            Notification::make()->title('Référence de semelle manquante.')->danger()->send();
+            return;
+        }
+
+        $reussies = 0;
+        foreach ($lignes as $ligne) {
+            if (empty($ligne['granit_id']) || $ligne['prix_fob'] === null || $ligne['taux_marge'] === null) {
+                continue;
+            }
+
+            $valeurs = [
+                'prix_fob' => $ligne['prix_fob'],
+                'taux_marge' => $ligne['taux_marge'],
+            ];
+            // Un poids vide ne remplace pas un poids déjà enregistré.
+            if (isset($ligne['poids_semelle']) && $ligne['poids_semelle'] !== '') {
+                $valeurs['poids_kg'] = $ligne['poids_semelle'];
+            }
+
+            MonumentSemellePrix::updateOrCreate(
+                ['monument_id' => $monument->id, 'granit_id' => $ligne['granit_id'], 'reference' => $reference],
+                $valeurs
+            );
+            $reussies++;
+        }
+
+        Notification::make()
+            ->title("{$reussies} prix de la semelle {$reference} importé(s) sur « {$monument->nom} »")
             ->success()
             ->send();
 

@@ -9,8 +9,15 @@ class PrixCalculator
 {
     public static function prixVenteDepart(Monument $monument, float $prixFob, float $tauxMarge): ?float
     {
-        $poidsKg = $monument->poidsKg();
+        return static::prixVenteDepartPourPoids($monument->poidsKg(), $prixFob, $tauxMarge);
+    }
 
+    /**
+     * Même formule que prixVenteDepart() pour un poids donné (utilisée aussi pour les semelles,
+     * qui ont leur propre poids et leur propre prix FOB).
+     */
+    public static function prixVenteDepartPourPoids(float $poidsKg, float $prixFob, float $tauxMarge): ?float
+    {
         if ($poidsKg <= 0 || $prixFob <= 0) {
             return null;
         }

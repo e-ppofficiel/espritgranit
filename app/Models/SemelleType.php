@@ -23,4 +23,10 @@ class SemelleType extends Model
             ->withPivot(['is_default'])
             ->withTimestamps();
     }
+
+    /** Ex. « SEMELLE-B : semelle bouchardée » (liste déroulante du configurateur, listes d'administration). */
+    public function getLibelleCompletAttribute(): string
+    {
+        return $this->code.' : '.trim((string) $this->label);
+    }
 }

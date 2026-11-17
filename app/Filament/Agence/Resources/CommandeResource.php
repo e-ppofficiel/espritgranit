@@ -51,6 +51,10 @@ class CommandeResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('granit.nom_commercial')
                     ->label('Granit'),
+                Tables\Columns\TextColumn::make('semelle_libelle')
+                    ->label('Semelle')
+                    ->placeholder('—')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('statut')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {

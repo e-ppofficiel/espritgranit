@@ -36,6 +36,11 @@ class Devis extends Model
         'commentaire',
         'piece_jointe',
         'visuel',
+        'semelle_type_id',
+        'semelle_dimension_id',
+        'semelle_reference',
+        'semelle_libelle',
+        'prix_semelle',
     ];
 
     public function getActivitylogOptions(): LogOptions
@@ -51,6 +56,8 @@ class Devis extends Model
                 'soubassement_noir',
                 'departement_livraison_id',
                 'prix_granit_base',
+                'semelle_reference',
+                'prix_semelle',
                 'prix_transport',
                 'prix_total',
                 'coefficient_applique',
@@ -114,6 +121,16 @@ class Devis extends Model
     public function departementLivraison()
     {
         return $this->belongsTo(Departement::class, 'departement_livraison_id');
+    }
+
+    public function semelleType()
+    {
+        return $this->belongsTo(SemelleType::class);
+    }
+
+    public function semelleDimension()
+    {
+        return $this->belongsTo(MonumentSemelleDimension::class, 'semelle_dimension_id');
     }
 
     public function dimensions()

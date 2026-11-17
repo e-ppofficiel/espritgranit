@@ -25,6 +25,9 @@ class Commande extends Model
         'container_id',
         'prix_transport',
         'prix_final',
+        'semelle_reference',
+        'semelle_libelle',
+        'prix_semelle',
         'date_depart_prevue',
         'date_arrivee_prevue',
         'date_arrivee_reelle',
@@ -97,6 +100,9 @@ class Commande extends Model
             'departement_livraison_id' => $devis->departement_livraison_id,
             'prix_transport' => $devis->prix_transport,
             'prix_final' => $devis->prix_final,
+            'semelle_reference' => $devis->semelle_reference,
+            'semelle_libelle' => $devis->semelle_libelle,
+            'prix_semelle' => $devis->prix_semelle,
             'statut' => 'en_preparation',
         ]);
 

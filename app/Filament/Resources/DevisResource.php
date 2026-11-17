@@ -7,9 +7,11 @@ use App\Models\Agence;
 use App\Models\Departement;
 use App\Models\Devis;
 use App\Models\Monument;
+use App\Models\MonumentSemelleDimension;
 use App\Models\Societe;
 use App\Services\CoefficientResolver;
 use App\Services\PrixCalculator;
+use App\Services\SemelleDevis;
 use App\Services\TransportCalculator;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -70,6 +72,14 @@ class DevisResource extends Resource
             }
         }
 
+        // Semelle choisie (facultative) : son prix s'ajoute et son poids compte dans le transport.
+        $semelle = SemelleDevis::calculer(
+            $monumentId ? (int) $monumentId : null,
+            $granitId ? (int) $granitId : null,
+            $get('semelle_dimension_id') ? (int) $get('semelle_dimension_id') : null
+        );
+        $poidsKg += $semelle['poids_kg'];
+
         $prixTransport = null;
         if ($departementId && $poidsKg > 0) {
             $departement = Departement::find($departementId);
@@ -78,8 +88,8 @@ class DevisResource extends Resource
             }
         }
 
-        $prixTotal = ($prixGranit !== null || $prixTransport !== null)
-            ? ($prixGranit ?? 0) + ($prixTransport ?? 0)
+        $prixTotal = ($prixGranit !== null || $semelle['prix'] !== null || $prixTransport !== null)
+            ? ($prixGranit ?? 0) + ($semelle['prix'] ?? 0) + ($prixTransport ?? 0)
             : null;
 
         $agence = $agenceId ? Agence::find($agenceId) : null;
@@ -87,6 +97,13 @@ class DevisResource extends Resource
         $coefficient = CoefficientResolver::resoudre($agence, $societe);
 
         $set('prix_granit_base', $prixGranit);
+        if ($get('semelle_dimension_id') && $semelle['dimension_id'] === null) {
+            $set('semelle_dimension_id', null); // la dimension ne correspond plus au monument choisi
+        }
+        $set('semelle_type_id', $semelle['type_id']);
+        $set('semelle_reference', $semelle['reference']);
+        $set('semelle_libelle', $semelle['libelle']);
+        $set('prix_semelle', $semelle['prix']);
         $set('prix_transport', $prixTransport);
         $set('prix_total', $prixTotal);
         $set('coefficient_applique', $coefficient);
@@ -180,6 +197,41 @@ class DevisResource extends Resource
                         static::notifierApercu3D($get, $livewire);
                     }),
 
+                Forms\Components\Select::make('semelle_dimension_id')
+                    ->label('Semelle')
+                    ->options(function (Get $get) {
+                        $monumentId = $get('monument_id');
+                        if (! $monumentId) {
+                            return [];
+                        }
+
+                        return MonumentSemelleDimension::with('semelleType')
+                            ->where('monument_id', $monumentId)
+                            ->orderBy('ordre_affichage')
+                            ->orderBy('id')
+                            ->get()
+                            ->mapWithKeys(fn (MonumentSemelleDimension $d) => [$d->id => $d->libelleSelect()])
+                            ->all();
+                    })
+                    ->placeholder('Sans semelle')
+                    ->native(false)
+                    ->searchable()
+                    ->live()
+                    ->helperText(function (Get $get) {
+                        $semelle = SemelleDevis::calculer(
+                            $get('monument_id') ? (int) $get('monument_id') : null,
+                            $get('granit_id') ? (int) $get('granit_id') : null,
+                            $get('semelle_dimension_id') ? (int) $get('semelle_dimension_id') : null
+                        );
+
+                        return $semelle['avertissement'] ?? 'Facultatif : le prix de la semelle s\'ajoute au prix du monument.';
+                    })
+                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculerPrix($get, $set)),
+
+                Forms\Components\Hidden::make('semelle_type_id'),
+                Forms\Components\Hidden::make('semelle_reference'),
+                Forms\Components\Hidden::make('semelle_libelle'),
+
                 Forms\Components\View::make('filament.forms.components.devis-visuel-capture')
                     ->viewData(fn (Get $get) => [
                         'monumentIdInitial' => $get('monument_id'),
@@ -253,6 +305,12 @@ class DevisResource extends Resource
                             ->numeric()
                             ->prefix('€')
                             ->helperText('Pré-rempli automatiquement, modifiable si besoin.'),
+
+                        Forms\Components\TextInput::make('prix_semelle')
+                            ->label('Prix semelle')
+                            ->numeric()
+                            ->prefix('€')
+                            ->helperText('Pré-rempli automatiquement si une semelle est choisie, modifiable si besoin.'),
 
                         Forms\Components\TextInput::make('prix_transport')
                             ->label('Prix transport')

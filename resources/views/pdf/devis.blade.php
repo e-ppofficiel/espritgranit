@@ -161,6 +161,14 @@
                 <br><br>
                 <div class="label">Granit</div>
                 {{ $devis->granit->nom_commercial ?? '—' }}
+                @if($devis->semelle_reference || $devis->semelle_libelle)
+                    <br><br>
+                    <div class="label">Semelle</div>
+                    {{ $devis->semelle_libelle ?: $devis->semelle_reference }}
+                    @if($devis->semelle_reference)
+                        <br><span style="color:#6b7280; font-size:9px;">Réf. {{ $devis->semelle_reference }}</span>
+                    @endif
+                @endif
             </td>
             <td>
                 <div class="label">Soubassement noir</div>
@@ -211,6 +219,12 @@
             <td>Prix granit (base)</td>
             <td class="montant">{{ $devis->prix_granit_base !== null ? number_format($devis->prix_granit_base, 2, ',', ' ') . ' €' : '—' }}</td>
         </tr>
+        @if($devis->semelle_reference || $devis->semelle_libelle)
+        <tr>
+            <td>Prix semelle</td>
+            <td class="montant">{{ $devis->prix_semelle !== null ? number_format($devis->prix_semelle, 2, ',', ' ') . ' €' : '—' }}</td>
+        </tr>
+        @endif
         <tr>
             <td>Prix transport</td>
             <td class="montant">{{ $devis->prix_transport !== null ? number_format($devis->prix_transport, 2, ',', ' ') . ' €' : '—' }}</td>

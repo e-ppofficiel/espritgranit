@@ -65,6 +65,8 @@ return [
     'finitions' => [
         'SEMELLE-B' => ['rugosite' => 0.85],                      // bouchardée
         'SEMELLE-P' => ['rugosite' => 0.10, 'brillance' => true], // plate
+        'SEMELLE-R-P' => ['rugosite' => 0.10, 'brillance' => true], // à revers d'eau, polie
+        'SEMELLE-R-B' => ['rugosite' => 0.85],                    // à revers d'eau, bouchardée
         'SEMELLE'   => ['rugosite' => 0.60],
         'BICOLOR'   => ['rugosite' => 0.03, 'brillance' => true], // soubassement noir poli
         'GRANIT'    => ['rugosite' => 0.04, 'brillance' => true], // poli

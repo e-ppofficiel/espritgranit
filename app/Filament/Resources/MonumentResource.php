@@ -235,6 +235,7 @@ class MonumentResource extends Resource
             RelationManagers\GranitsRelationManager::class,
             RelationManagers\SemelleTypesRelationManager::class,
             RelationManagers\SemelleDimensionsRelationManager::class,
+            RelationManagers\SemellePrixRelationManager::class,
         ];
     }
 

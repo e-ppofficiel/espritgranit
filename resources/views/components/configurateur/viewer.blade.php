@@ -21,6 +21,8 @@
     $finitions = config('configurateur.finitions', [
         'SEMELLE-B' => ['rugosite' => 0.85],
         'SEMELLE-P' => ['rugosite' => 0.1, 'brillance' => true],
+        'SEMELLE-R-P' => ['rugosite' => 0.1, 'brillance' => true],
+        'SEMELLE-R-B' => ['rugosite' => 0.85],
         'SEMELLE' => ['rugosite' => 0.6],
         'BICOLOR' => ['rugosite' => 0.03, 'brillance' => true],
         'GRANIT' => ['rugosite' => 0.04, 'brillance' => true],
@@ -441,31 +443,9 @@
             color: rgba(255,255,255,0.4);
             margin: 0 0 8px;
         }
-        #config-semelle-types {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .config-semelle-btn {
-            cursor: pointer;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.2);
-            color: rgba(255,255,255,0.8);
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-        }
-        .config-semelle-btn:hover {
-            background: rgba(255,255,255,0.12);
-        }
-        .config-semelle-btn.selected {
-            border-color: #d97706;
-            color: #d97706;
-            background: rgba(217,119,6,0.1);
-        }
+        #config-semelle-type-select,
         #config-semelle-dimensions {
             width: 100%;
-            margin-top: 8px;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.2);
             color: #fff;
@@ -473,6 +453,10 @@
             border-radius: 6px;
             font-size: 0.8rem;
         }
+        #config-semelle-dimensions {
+            margin-top: 8px;
+        }
+        #config-semelle-type-select option,
         #config-semelle-dimensions option {
             background: #0a0a0a;
             color: #fff;
@@ -589,24 +573,25 @@
                 @if(($semelleTypes ?? collect())->isNotEmpty())
                     <div id="config-semelle-type-section">
                         <div class="config-semelle-label">Type de semelle</div>
-                        <div id="config-semelle-types">
+                        <select id="config-semelle-type-select" aria-label="Type de semelle">
                             @foreach($semelleTypes as $type)
-                                <button type="button"
-                                        class="config-semelle-btn @if($type->pivot->is_default) selected @endif"
+                                <option value="{{ $type->id }}"
                                         data-code="{{ $type->code }}"
-                                        data-type-id="{{ $type->id }}">
-                                    {{ $type->label }}
-                                </button>
+                                        data-type-id="{{ $type->id }}"
+                                        @if($type->pivot->is_default) selected @endif>
+                                    {{ $type->code }} : {{ $type->label }}
+                                </option>
                             @endforeach
-                        </div>
+                        </select>
 
                         @if(($semelleDimensions ?? collect())->isNotEmpty())
                             <select id="config-semelle-dimensions">
                                 @foreach($semelleDimensions as $dimension)
                                     <option value="{{ $dimension->id }}"
                                             data-type="{{ $dimension->semelle_type_id }}"
+                                            data-default="{{ $dimension->is_default ? '1' : '0' }}"
                                             @if($dimension->is_default) selected @endif>
-                                        {{ $dimension->label ?: ($dimension->longueur . ' x ' . $dimension->largeur . ' cm') }}
+                                        {{ $dimension->label ?: ($dimension->longueur . ' x ' . $dimension->largeur . ' cm') }}@if($dimension->is_default) (par défaut)@endif
                                     </option>
                                 @endforeach
                             </select>
@@ -880,21 +865,22 @@
                 }
             };
 
-            const semelleButtons = document.querySelectorAll('.config-semelle-btn');
+            const semelleTypeSelect = document.querySelector('#config-semelle-type-select');
             const semelleDimSelect = document.querySelector('#config-semelle-dimensions');
             const semelleTypeSection = document.querySelector('#config-semelle-type-section');
-            const codesTypesSemelle = [...semelleButtons].map(b => b.dataset.code.toUpperCase());
+            const codesTypesSemelle = semelleTypeSelect ? [...semelleTypeSelect.options].map(o => o.dataset.code.toUpperCase()) : [];
+            const typeSemelleSelectionne = () => (semelleTypeSelect ? semelleTypeSelect.selectedOptions[0] || null : null);
 
             const mettreAJourSemelleVisibilite = () => {
                 const materiauxSemelle = getMateriaux('SEMELLE');
                 const semelleActivee = semelleToggle.checked;
-                const boutonSelectionne = document.querySelector('.config-semelle-btn.selected');
-                const codeSelectionne = boutonSelectionne ? boutonSelectionne.dataset.code.toUpperCase() : null;
+                const typeSelectionne = typeSemelleSelectionne();
+                const codeSelectionne = typeSelectionne ? typeSelectionne.dataset.code.toUpperCase() : null;
 
                 materiauxSemelle.forEach(material => {
                     if (!material.pbrMetallicRoughness) return;
 
-                    // Un monument peut avoir plusieurs types de semelle modélisés (SEMELLE-B, SEMELLE-P, SEMELLE-R)
+                    // Un monument peut avoir plusieurs types de semelle modélisés (SEMELLE-B, SEMELLE-P, SEMELLE-R-P, SEMELLE-R-B)
                     // ou un seul groupe générique "SEMELLE" (monuments sans variante de type).
                     const nomMajuscule = material.name.trim().toUpperCase();
                     const codeCorrespondant = codesTypesSemelle.find(code => nomMajuscule.startsWith(code));
@@ -913,22 +899,32 @@
             };
 
             const filtrerDimensionsParType = (code) => {
-                if (!semelleDimSelect) return;
-                const boutonSelectionne = [...semelleButtons].find(b => b.dataset.code.toUpperCase() === code.toUpperCase());
-                const typeId = boutonSelectionne ? boutonSelectionne.dataset.typeId : null;
+                if (!semelleDimSelect || !semelleTypeSelect) return;
+                const optionType = [...semelleTypeSelect.options].find(o => o.dataset.code.toUpperCase() === code.toUpperCase());
+                const typeId = optionType ? optionType.dataset.typeId : null;
 
+                // Dimensions proposées : celles du type choisi, plus celles valables pour tous les types.
+                // On présélectionne la dimension « par défaut » du type (à défaut, une dimension par défaut
+                // valable pour tous les types, sinon la première).
                 let premiereOptionVisible = null;
+                let defautDuType = null;
+                let defautGeneral = null;
                 [...semelleDimSelect.options].forEach(option => {
                     const optionTypeId = option.dataset.type || '';
                     const correspond = optionTypeId === '' || optionTypeId === typeId;
                     option.hidden = !correspond;
-                    if (correspond && !premiereOptionVisible) {
-                        premiereOptionVisible = option;
+                    option.disabled = !correspond;
+                    if (!correspond) return;
+                    if (!premiereOptionVisible) premiereOptionVisible = option;
+                    if (option.dataset.default === '1') {
+                        if (optionTypeId === typeId && !defautDuType) defautDuType = option;
+                        if (optionTypeId === '' && !defautGeneral) defautGeneral = option;
                     }
                 });
 
-                if (premiereOptionVisible && semelleDimSelect.selectedOptions[0]?.hidden) {
-                    semelleDimSelect.value = premiereOptionVisible.value;
+                const aSelectionner = defautDuType || defautGeneral || premiereOptionVisible;
+                if (aSelectionner) {
+                    semelleDimSelect.value = aSelectionner.value;
                 }
             };
 
@@ -1121,24 +1117,18 @@
                     }
                 });
 
-                if (semelleButtons.length > 0) {
-                    semelleButtons.forEach(button => {
-                        button.addEventListener('click', () => {
-                            const code = button.dataset.code;
-
-                            semelleButtons.forEach(b => b.classList.remove('selected'));
-                            button.classList.add('selected');
-
-                            mettreAJourSemelleVisibilite();
-                            filtrerDimensionsParType(code);
-                        });
+                if (semelleTypeSelect && semelleTypeSelect.options.length > 0) {
+                    semelleTypeSelect.addEventListener('change', () => {
+                        const option = typeSemelleSelectionne();
+                        mettreAJourSemelleVisibilite();
+                        if (option) filtrerDimensionsParType(option.dataset.code);
                     });
 
                     // État initial : applique le type par défaut (ou le premier) au chargement
-                    const boutonInitial = document.querySelector('.config-semelle-btn.selected') || semelleButtons[0];
-                    if (boutonInitial) {
-                        boutonInitial.classList.add('selected');
-                        filtrerDimensionsParType(boutonInitial.dataset.code);
+                    const optionInitiale = typeSemelleSelectionne() || semelleTypeSelect.options[0];
+                    if (optionInitiale) {
+                        optionInitiale.selected = true;
+                        filtrerDimensionsParType(optionInitiale.dataset.code);
                     }
                     if (semelleTypeSection) {
                         semelleTypeSection.classList.toggle('disabled', !semelleToggle.checked);

@@ -22,7 +22,7 @@ class ImportPrixGranitsParser
      * Toutes les autres colonnes (transport, transit, prix vente calculé...) sont ignorées :
      * elles sont recalculées en direct par PrixCalculator / le coefficient société-agence.
      */
-    public static function parse(string $texteColle): array
+    public static function parse(string $texteColle, string $format = 'monument'): array
     {
         $lignesBrutes = preg_split('/\r\n|\r|\n/', trim($texteColle));
         $resultats = [];
@@ -35,12 +35,20 @@ class ImportPrixGranitsParser
             $colonnes = explode("\t", $ligneBrute);
 
             $nomGranit = trim($colonnes[2] ?? '');
-            $prefixe = trim($colonnes[5] ?? '');
-            $categorie = trim($colonnes[6] ?? '');
-            $pays = trim($colonnes[7] ?? '');
-            $prixFob = self::parseMontant($colonnes[11] ?? null);
-            $tauxMarge = self::parsePourcentage($colonnes[13] ?? null);
-            $poids = self::parseMontant($colonnes[14] ?? null);
+            if ($format === 'semelle') {
+                // Fichier de prix d'une semelle : mêmes colonnes de prix que les monuments, mais les colonnes
+                // intermédiaires peuvent être décalées. On se repère sur le taux de marge (cellule « 40% »),
+                // précédé du prix FOB (2 colonnes avant) et suivi du poids.
+                $prefixe = $categorie = $pays = '';
+                [$prixFob, $tauxMarge, $poids] = self::extraireSemelle($colonnes);
+            } else {
+                $prefixe = trim($colonnes[5] ?? '');
+                $categorie = trim($colonnes[6] ?? '');
+                $pays = trim($colonnes[7] ?? '');
+                $prixFob = self::parseMontant($colonnes[11] ?? null);
+                $tauxMarge = self::parsePourcentage($colonnes[13] ?? null);
+                $poids = self::parseMontant($colonnes[14] ?? null);
+            }
 
             if ($nomGranit === '') {
                 $resultats[] = [
@@ -59,7 +67,7 @@ class ImportPrixGranitsParser
 
             $granit = self::trouverGranit($nomGranit, $prefixe);
 
-            $resultats[] = [
+            $resultat = [
                 'ligne_brute' => $ligneBrute,
                 'nom_detecte' => $prefixe ? "{$prefixe}-{$nomGranit}" : $nomGranit,
                 'granit_id' => $granit?->id,
@@ -72,9 +80,36 @@ class ImportPrixGranitsParser
                     ? 'Prix FOB ou taux de marge illisible sur cette ligne.'
                     : null,
             ];
+            if ($format === 'semelle') {
+                $resultat['poids_semelle'] = $poids;
+            }
+            $resultats[] = $resultat;
         }
 
         return $resultats;
+    }
+
+    /**
+     * @return array{0: ?float, 1: ?float, 2: ?float} prix FOB, taux de marge (0,40 = 40 %), poids en kg
+     */
+    protected static function extraireSemelle(array $colonnes): array
+    {
+        for ($i = 3, $n = count($colonnes); $i < $n; $i++) {
+            if (preg_match('/^\s*\d+([.,]\d+)?\s*%\s*$/', (string) $colonnes[$i])) {
+                return [
+                    self::parseMontant($colonnes[$i - 2] ?? null),
+                    self::parsePourcentage($colonnes[$i]),
+                    self::parseMontant($colonnes[$i + 1] ?? null),
+                ];
+            }
+        }
+
+        // Aucune cellule « % » : repli sur les colonnes habituelles des fichiers monuments.
+        return [
+            self::parseMontant($colonnes[11] ?? null),
+            self::parsePourcentage($colonnes[13] ?? null),
+            self::parseMontant($colonnes[14] ?? null),
+        ];
     }
 
     protected static function trouverGranit(string $nomGranit, string $prefixe): ?Granit
