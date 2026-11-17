@@ -73,8 +73,13 @@
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
+        /* La sidebar (320 px) est posée par-dessus la droite du wrapper : le viewer occupe seulement la
+           zone visible à sa gauche. Le monument est ainsi centré dans ce qu'on voit, et le pivot de
+           rotation (centre de la boîte englobante du GLB) est le monument lui-même, quelle que soit
+           la taille ou la position du GLB dans son repère. */
         #config-monument-viewer {
-            width: 100%;
+            display: block;
+            width: calc(100% - 320px);
             height: 100%;
             background-color: #0a0a0a;
             --poster-color: transparent;
@@ -477,9 +482,8 @@
                           @endif
                           min-camera-orbit="auto 15deg auto"
                           max-camera-orbit="auto 90deg auto"
-                          camera-orbit="0deg 75deg 60%"
+                          camera-orbit="0deg 75deg 80%"
                           orbit-sensitivity="0.4"
-                          camera-target="0.5m 0m 0m"
                           alt="{{ $monument->nom }}">
             </model-viewer>
 
