@@ -356,6 +356,57 @@
             gap: 8px;
             z-index: 10;
         }
+        /* Bouton plein écran : en bas à droite de la zone 3D (à gauche de la barre latérale de 320 px). */
+        #config-fullscreen-btn {
+            position: absolute;
+            bottom: 16px;
+            right: 336px;
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            z-index: 11;
+            transition: background 0.2s;
+        }
+        #config-fullscreen-btn:hover { background: rgba(255,255,255,0.18); }
+        #config-fullscreen-btn:focus-visible { outline: 2px solid #d97706; outline-offset: 2px; }
+        #config-fullscreen-btn svg { width: 20px; height: 20px; display: block; }
+        #config-fullscreen-btn .icone-reduire { display: none; }
+        #config-wrapper.en-plein-ecran #config-fullscreen-btn .icone-agrandir { display: none; }
+        #config-wrapper.en-plein-ecran #config-fullscreen-btn .icone-reduire { display: block; }
+        #config-wrapper.fond-clair #config-fullscreen-btn {
+            background: rgba(0,0,0,0.05);
+            border-color: rgba(0,0,0,0.25);
+            color: #111;
+        }
+        #config-wrapper.fond-clair #config-fullscreen-btn:hover { background: rgba(0,0,0,0.12); }
+        #config-wrapper.avec-decor #config-fullscreen-btn {
+            background: rgba(0,0,0,0.35);
+            border-color: rgba(255,255,255,0.45);
+            color: #fff;
+        }
+        #config-wrapper.avec-decor #config-fullscreen-btn:hover { background: rgba(0,0,0,0.55); }
+        /* Plein écran natif : la scène occupe tout l'écran (le 75vh ne s'applique plus). Règles séparées,
+           un sélecteur inconnu invaliderait toute la règle. */
+        #config-wrapper:fullscreen { height: 100% !important; width: 100% !important; border-radius: 0; }
+        #config-wrapper:-webkit-full-screen { height: 100% !important; width: 100% !important; border-radius: 0; }
+        /* Repli (iPhone Safari, sans API plein écran sur un élément) : on simule en recouvrant la fenêtre. */
+        #config-wrapper.pseudo-plein-ecran {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            border-radius: 0;
+            z-index: 2147483000;
+        }
         #config-selected-swatch {
             width: 14px;
             height: 14px;
@@ -534,6 +585,11 @@
                 <span id="config-selected-name">—</span>
                 <span id="config-selected-swatch"></span>
             </div>
+
+            <button id="config-fullscreen-btn" type="button" aria-label="Plein écran" title="Plein écran" aria-pressed="false">
+                <svg class="icone-agrandir" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+                <svg class="icone-reduire" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h5V3M21 8h-5V3M3 16h5v5M21 16h-5v5"/></svg>
+            </button>
 
             <div id="config-sidebar">
                 <div id="config-main-tabs">
@@ -1292,6 +1348,73 @@
 
                 mettreAJourSemelleVisibilite();
             });
+
+            // ── Plein écran (toute la scène : visualiseur + barre latérale) ──
+            (function () {
+                const btn = document.querySelector('#config-fullscreen-btn');
+                if (!btn || !configWrapper) return;
+
+                let pseudo = false;
+
+                function elementPleinEcran() {
+                    return document.fullscreenElement || document.webkitFullscreenElement || null;
+                }
+                function actif() {
+                    return pseudo || elementPleinEcran() === configWrapper;
+                }
+                function rafraichir() {
+                    const on = actif();
+                    configWrapper.classList.toggle('en-plein-ecran', on);
+                    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    const libelle = on ? 'Quitter le plein écran' : 'Plein écran';
+                    btn.setAttribute('aria-label', libelle);
+                    btn.title = libelle;
+                    // Le visualiseur doit recalculer sa taille (la fenêtre a changé).
+                    window.dispatchEvent(new Event('resize'));
+                }
+                function entrerPseudo() {
+                    pseudo = true;
+                    configWrapper.classList.add('pseudo-plein-ecran');
+                    document.documentElement.style.overflow = 'hidden';
+                    rafraichir();
+                }
+                function sortirPseudo() {
+                    pseudo = false;
+                    configWrapper.classList.remove('pseudo-plein-ecran');
+                    document.documentElement.style.overflow = '';
+                    rafraichir();
+                }
+                function entrer() {
+                    const demander = configWrapper.requestFullscreen || configWrapper.webkitRequestFullscreen;
+                    if (!demander) { entrerPseudo(); return; }
+                    try {
+                        const r = demander.call(configWrapper);
+                        if (r && typeof r.catch === 'function') r.catch(entrerPseudo);
+                    } catch (e) {
+                        entrerPseudo();
+                    }
+                }
+                function sortir() {
+                    if (pseudo) { sortirPseudo(); return; }
+                    const quitter = document.exitFullscreen || document.webkitExitFullscreen;
+                    if (quitter) {
+                        try {
+                            const r = quitter.call(document);
+                            if (r && typeof r.catch === 'function') r.catch(function () {});
+                        } catch (e) {}
+                    }
+                }
+
+                btn.addEventListener('click', function () {
+                    if (actif()) sortir(); else entrer();
+                });
+                document.addEventListener('fullscreenchange', rafraichir);
+                document.addEventListener('webkitfullscreenchange', rafraichir);
+                // Le mode simulé n'a pas de touche Échap native.
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape' && pseudo) sortirPseudo();
+                });
+            })();
         });
     </script>
 
