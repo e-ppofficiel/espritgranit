@@ -28,19 +28,39 @@ return [
     // Images : photos HDRI Poly Haven (licence CC0), réduites en 1536×768 avec tools/eg-glb/env/convertir_hdri.py.
     'ambiance_defaut_libelle' => 'Studio',
     'ambiances' => [
-        'kloppenheim-puresky'         => ['libelle' => 'Kloppenheim puresky',         'fichier' => 'configurateur/ambiances/kloppenheim-puresky.hdr',         'exposition' => 1.45],
+        'kloppenheim-puresky'         => ['libelle' => 'Kloppenheim puresky',         'fichier' => 'configurateur/ambiances/kloppenheim-puresky.hdr',         'exposition' => 1.45, 'decor' => false],
         'meadow'                      => ['libelle' => 'Meadow',                      'fichier' => 'configurateur/ambiances/meadow.hdr',                      'exposition' => 0.9],
         'river-alcove'                => ['libelle' => 'River alcove',                'fichier' => 'configurateur/ambiances/river-alcove.hdr',                'exposition' => 0.95],
         'snowy-forest'                => ['libelle' => 'Snowy forest',                'fichier' => 'configurateur/ambiances/snowy-forest.hdr',                'exposition' => 1.55],
-        'sunflowers-puresky'          => ['libelle' => 'Sunflowers puresky',          'fichier' => 'configurateur/ambiances/sunflowers-puresky.hdr',          'exposition' => 1.3],
+        'sunflowers-puresky'          => ['libelle' => 'Sunflowers puresky',          'fichier' => 'configurateur/ambiances/sunflowers-puresky.hdr',          'exposition' => 1.3, 'decor' => false],
         'tree-lined-driveway'         => ['libelle' => 'Tree lined driveway',         'fichier' => 'configurateur/ambiances/tree-lined-driveway.hdr',         'exposition' => 1.35],
-        'citrus-orchard-road-puresky' => ['libelle' => 'Citrus orchard road puresky', 'fichier' => 'configurateur/ambiances/citrus-orchard-road-puresky.hdr', 'exposition' => 1.1],
+        'citrus-orchard-road-puresky' => ['libelle' => 'Citrus orchard road puresky', 'fichier' => 'configurateur/ambiances/citrus-orchard-road-puresky.hdr', 'exposition' => 1.1, 'decor' => false],
         'epping-forest'               => ['libelle' => 'Epping forest',               'fichier' => 'configurateur/ambiances/epping-forest.hdr',               'exposition' => 1.5],
         'forest-slope'                => ['libelle' => 'Forest slope',                'fichier' => 'configurateur/ambiances/forest-slope.hdr',                'exposition' => 1.6],
     ],
 
-    // Fond du viewer à l'ouverture : 'noir' ou 'blanc'. Chaque visiteur peut le changer (mémorisé dans son navigateur).
+    // Fond du viewer à l'ouverture : 'noir' ou 'clair' ('blanc' reste accepté : ancienne valeur). Chaque visiteur peut le changer
+    // (interrupteur « Fond clair », mémorisé dans son navigateur).
     'fond_defaut' => 'noir',
+
+    // Couleur du fond clair : un gris chaud neutre, volontairement pas du blanc pur (hexadécimal #rrggbb).
+    'fond_clair_couleur' => '#e6e3de',
+
+    // Décor paysager 360° (interrupteur « Décor jardin 360° ») : le paysage de l'ambiance choisie s'affiche en arrière-plan
+    // à la place du fond uni. Par défaut l'image est le panorama HDR de l'ambiance ; une ambiance peut avoir sa propre image
+    // plus nette avec 'decor' => 'configurateur/decors/xxx.jpg' (JPG 4096x2048 conseillé), ou être exclue avec 'decor' => false.
+    //   'actif'           : false masque l'interrupteur (retour arrière complet) ;
+    //   'defaut'          : true affiche le décor à l'ouverture (le visiteur garde son propre choix mémorisé) ;
+    //   'hauteur_facteur' : hauteur de la caméra qui a pris le panorama, en multiple de la plus grande dimension du monument
+    //                       (plus petit = horizon plus haut et sol plus proche ; à ajuster à l'œil) ;
+    //   'angle_camera'    : angle de la caméra (en degrés, 15 à 90 ; 90 = à l'horizontale) quand le décor s'affiche. Vu de haut le sol du
+    //                       panorama est flou : on descend vers l'horizon. La caméra reprend son angle d'avant en éteignant le décor.
+    'decor' => [
+        'actif' => true,
+        'defaut' => false,
+        'hauteur_facteur' => 0.6,
+        'angle_camera' => 83,
+    ],
 
     // Taille réelle (en cm) du carré photographié, quand le granit n'a pas de valeur propre (colonne granits.echantillon_cm).
     // Plus ce nombre est PETIT, plus le grain paraît FIN sur le monument.

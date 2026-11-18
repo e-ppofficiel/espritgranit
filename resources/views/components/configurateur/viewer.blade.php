@@ -32,7 +32,15 @@
         ['defaut' => 100, 'facteur_miroir' => 0.15, 'rugosite_mate' => 0.55],
         (array) config('configurateur.brillance', [])
     );
-    $fondDefaut = config('configurateur.fond_defaut', 'noir') === 'blanc' ? 'blanc' : 'noir';
+    // « blanc » est l'ancienne valeur de config pour le fond clair : on accepte aussi « clair ».
+    $fondDefaut = in_array(config('configurateur.fond_defaut', 'noir'), ['blanc', 'clair'], true) ? 'blanc' : 'noir';
+    // Fond clair neutre (pas du blanc pur) : couleur hexadécimale de la config, avec repli sûr.
+    $fondClairCouleur = (string) config('configurateur.fond_clair_couleur', '#e6e3de');
+    if (! preg_match('/^#[0-9a-fA-F]{6}$/', $fondClairCouleur)) {
+        $fondClairCouleur = '#e6e3de';
+    }
+    // Décor paysager 360° (interrupteur « Décor jardin ») : le paysage de l'ambiance choisie s'affiche en fond.
+    $decorCfg = array_merge(['actif' => true, 'defaut' => false, 'hauteur_facteur' => 0.6, 'angle_camera' => 83], (array) config('configurateur.decor', []));
 
     // Curseurs de réglage du granit : réservés aux administrateurs (la page admin passe :peut-regler="true").
     $peutReglerGranits = ($peutRegler ?? false) && $renduRealiste;
@@ -46,18 +54,27 @@
             'libelle' => config('configurateur.ambiance_defaut_libelle', 'Studio'),
             'url' => $envHdr,
             'exposition' => $exposition,
+            'decor' => null,
         ];
         foreach ((array) config('configurateur.ambiances', []) as $cle => $ambiance) {
             if ($cle === 'defaut' || empty($ambiance['fichier']) || ! file_exists(public_path($ambiance['fichier']))) {
                 continue;
             }
+            // Image de fond : le fichier 'decor' de l'ambiance (ex. un JPG 4K plus net) ou, à défaut, son panorama HDR.
+            // 'decor' => false exclut l'ambiance du décor (ex. ciel seul).
+            $decorFichier = $ambiance['decor'] ?? $ambiance['fichier'];
+            $decorUrl = ($decorCfg['actif'] && $decorFichier !== false && file_exists(public_path($decorFichier)))
+                ? asset($decorFichier)
+                : null;
             $ambiances[$cle] = [
                 'libelle' => $ambiance['libelle'] ?? ucfirst(str_replace('-', ' ', $cle)),
                 'url' => asset($ambiance['fichier']),
                 'exposition' => (float) ($ambiance['exposition'] ?? $exposition),
+                'decor' => $decorUrl,
             ];
         }
     }
+    $decorDisponible = array_filter($ambiances, fn ($a) => ! empty($a['decor'])) !== [];
 @endphp
 
 <div wire:ignore>
@@ -97,13 +114,14 @@
             z-index: 10;
             pointer-events: none;
         }
-        /* Fond blanc (interrupteur « Fond blanc ») : le texte posé sur la scène passe en sombre. */
+        /* Fond clair neutre (interrupteur « Fond clair », couleur de la config 'fond_clair_couleur') :
+           le texte posé sur la scène passe en sombre. */
         #config-wrapper, #config-monument-viewer {
             transition: background-color 0.25s;
         }
         #config-wrapper.fond-clair,
         #config-wrapper.fond-clair #config-monument-viewer {
-            background-color: #ffffff;
+            background-color: var(--fond-clair, #e6e3de);
         }
         #config-wrapper.fond-clair #config-topbar,
         #config-wrapper.fond-clair #config-selected-label {
@@ -119,6 +137,24 @@
         }
         #config-wrapper.fond-clair #config-selected-swatch {
             border-color: rgba(0,0,0,0.4);
+        }
+        /* Décor paysager 360° (interrupteur « Décor jardin ») : le paysage remplace le fond uni, quel qu'il soit.
+           Les textes posés sur la photo repassent en clair, avec une ombre pour rester lisibles sur un ciel clair. */
+        #config-wrapper.avec-decor #config-topbar,
+        #config-wrapper.avec-decor #config-selected-label {
+            color: #fff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.65);
+        }
+        #config-wrapper.avec-decor #config-rotate-btn {
+            background: rgba(0,0,0,0.35);
+            border-color: rgba(255,255,255,0.45);
+            color: #fff;
+        }
+        #config-wrapper.avec-decor #config-rotate-btn:hover {
+            background: rgba(0,0,0,0.55);
+        }
+        #config-wrapper.avec-decor #config-selected-swatch {
+            border-color: rgba(255,255,255,0.6);
         }
         #config-model-name {
             font-size: 1rem;
@@ -468,7 +504,7 @@
         }
     </style>
 
-    <div id="config-wrapper" @if($fondDefaut === 'blanc') class="fond-clair" @endif>
+    <div id="config-wrapper" style="--fond-clair: {{ $fondClairCouleur }}" @if($fondDefaut === 'blanc') class="fond-clair" @endif>
         @if($glbUrl)
             <model-viewer id="config-monument-viewer"
                           src="{{ $glbUrl }}"
@@ -525,12 +561,21 @@
                         </label>
                     </div>
                     <div class="config-option-row">
-                        <span>Fond blanc</span>
+                        <span>Fond clair</span>
                         <label class="config-toggle">
                             <input type="checkbox" id="config-fond-toggle" @if($fondDefaut === 'blanc') checked @endif>
                             <span class="config-toggle-slider"></span>
                         </label>
                     </div>
+                    @if($decorDisponible)
+                        <div class="config-option-row">
+                            <span>Décor jardin 360°</span>
+                            <label class="config-toggle">
+                                <input type="checkbox" id="config-decor-toggle">
+                                <span class="config-toggle-slider"></span>
+                            </label>
+                        </div>
+                    @endif
                     @if(count($ambiances) > 1)
                         <div class="config-option-row">
                             <span>Ambiance</span>
@@ -680,14 +725,102 @@
             const AMBIANCES = @json($ambiances);
             const ambianceSelect = document.querySelector('#config-ambiance');
             const CLE_AMBIANCE = 'eg_configurateur_ambiance';
-            const definirAmbiance = (cle) => {
+            let ambianceCourante = 'defaut';
+            function definirAmbiance(cle) {
                 const ambiance = AMBIANCES[cle];
                 if (!ambiance) return false;
+                ambianceCourante = cle;
                 modelViewer.setAttribute('environment-image', ambiance.url);
                 modelViewer.setAttribute('exposure', ambiance.exposition);
                 if (ambianceSelect) ambianceSelect.value = cle;
+                // Une ambiance sans décor (Studio, ciel seul) : l'interrupteur « Décor jardin » repasse sur off.
+                if (decorActif && !ambiance.decor) definirDecor(false);
+                else appliquerDecor();
                 return true;
+            }
+
+            // ==========================================
+            // DÉCOR JARDIN 360° (le paysage de l'ambiance choisie en arrière-plan ; choix mémorisé dans le navigateur)
+            // L'image n'est téléchargée qu'à l'activation de l'interrupteur. skybox-height pose le paysage sur un sol
+            // (sans lui le monument semble flotter) : il se règle selon la taille du modèle, car les GLB n'ont pas la même échelle.
+            // ==========================================
+            const DECOR_FACTEUR_HAUTEUR = @json((float) $decorCfg['hauteur_facteur']);
+            const DECOR_ANGLE_CAMERA = @json(max(15.0, min(90.0, (float) $decorCfg['angle_camera'])));
+            const decorToggle = document.querySelector('#config-decor-toggle');
+            const CLE_DECOR = 'eg_configurateur_decor';
+            let decorActif = false;
+            const hauteurSkybox = () => {
+                let plusGrande = 0;
+                try {
+                    const d = modelViewer.getDimensions();
+                    plusGrande = Math.max(d.x, d.y, d.z);
+                } catch (erreur) { /* modèle pas encore chargé : réappliqué au chargement */ }
+                return ((plusGrande > 0 ? plusGrande : 1) * DECOR_FACTEUR_HAUTEUR).toFixed(3) + 'm';
             };
+            // Vu de haut (75°), le sol du panorama est un gazon étiré et flou ; près de l'horizontale on voit le paysage, ses arbres et le ciel.
+            // À l'affichage du décor la caméra descend donc à DECOR_ANGLE_CAMERA (sans toucher à l'azimut ni au zoom), et revient à son
+            // angle d'avant quand on l'éteint. Un visiteur déjà plus bas n'est pas déplacé.
+            let decorAffiche = false;
+            let angleAvantDecor = null;
+            function orienterPourDecor(visible) {
+                let o;
+                try { o = modelViewer.getCameraOrbit(); } catch (erreur) { return; }
+                const angle = o.phi * 180 / Math.PI;
+                if (visible && angle < DECOR_ANGLE_CAMERA - 0.5) {
+                    angleAvantDecor = angle;
+                    modelViewer.cameraOrbit = o.theta + 'rad ' + DECOR_ANGLE_CAMERA + 'deg ' + o.radius + 'm';
+                } else if (!visible && angleAvantDecor !== null) {
+                    modelViewer.cameraOrbit = o.theta + 'rad ' + angleAvantDecor + 'deg ' + o.radius + 'm';
+                    angleAvantDecor = null;
+                }
+            }
+            function appliquerDecor() {
+                const ambiance = AMBIANCES[ambianceCourante];
+                const visible = !!(decorActif && ambiance && ambiance.decor);
+                if (visible) {
+                    modelViewer.setAttribute('skybox-height', hauteurSkybox());
+                    if (modelViewer.getAttribute('skybox-image') !== ambiance.decor) modelViewer.setAttribute('skybox-image', ambiance.decor);
+                } else {
+                    modelViewer.removeAttribute('skybox-image');
+                    // « 0m » (valeur par défaut de model-viewer) plutôt que retirer l'attribut : sans valeur, model-viewer lève une erreur interne.
+                    modelViewer.setAttribute('skybox-height', '0m');
+                }
+                configWrapper.classList.toggle('avec-decor', visible);
+                if (visible !== decorAffiche && modelViewer.loaded) {
+                    decorAffiche = visible;
+                    orienterPourDecor(visible);
+                }
+            }
+            function definirDecor(actif) {
+                decorActif = actif;
+                if (decorToggle) decorToggle.checked = actif;
+                appliquerDecor();
+                try { window.localStorage.setItem(CLE_DECOR, actif ? '1' : '0'); } catch (erreur) {}
+            }
+            const premiereAmbianceAvecDecor = () => Object.keys(AMBIANCES).find((cle) => AMBIANCES[cle].decor) || null;
+            // model-viewer ne recalcule la distance maximale de la caméra (plan lointain) que lorsque max-camera-orbit change.
+            // Sans cela, un décor activé après le chargement du modèle est coupé : sol visible, ciel noir. On le force donc, une fois
+            // le paysage chargé (événement environment-change), par une variation imperceptible (0,001°) de l'angle maximal.
+            const MAX_ORBIT_A = 'auto 90deg auto';
+            const MAX_ORBIT_B = 'auto 89.999deg auto';
+            let minuteurPlanLointain = null;
+            const planifierPlanLointain = () => {
+                // Anti-rebond : plusieurs événements peuvent se suivre (éclairage puis décor) ; un seul ajustement, après le dernier.
+                clearTimeout(minuteurPlanLointain);
+                minuteurPlanLointain = setTimeout(() => {
+                    if (!modelViewer.hasAttribute('skybox-image')) return;
+                    modelViewer.setAttribute('max-camera-orbit', modelViewer.getAttribute('max-camera-orbit') === MAX_ORBIT_A ? MAX_ORBIT_B : MAX_ORBIT_A);
+                }, 250);
+            };
+            modelViewer.addEventListener('environment-change', planifierPlanLointain);
+            // Le chargement du seul décor ne déclenche pas environment-change : on écoute aussi la fin du chargement (progress à 100 %).
+            modelViewer.addEventListener('progress', (e) => { if (e.detail && e.detail.totalProgress === 1) planifierPlanLointain(); });
+            modelViewer.addEventListener('load', appliquerDecor);
+
+            // Restauration des choix du visiteur : décor d'abord, puis ambiance (qui peut le désactiver si elle n'a pas de décor).
+            try {
+                decorActif = !!decorToggle && (window.localStorage.getItem(CLE_DECOR) ?? @json($decorCfg['defaut'] ? '1' : '0')) === '1';
+            } catch (erreur) { decorActif = !!decorToggle && @json((bool) $decorCfg['defaut']); }
             if (ambianceSelect) {
                 try {
                     const ambianceMemorisee = window.localStorage.getItem(CLE_AMBIANCE);
@@ -696,6 +829,24 @@
                 ambianceSelect.addEventListener('change', () => {
                     definirAmbiance(ambianceSelect.value);
                     try { window.localStorage.setItem(CLE_AMBIANCE, ambianceSelect.value); } catch (erreur) {}
+                });
+            }
+            // Décor mémorisé « actif » mais ambiance courante sans décor (ex. Studio) : on prend la première ambiance avec décor.
+            if (decorActif && !(AMBIANCES[ambianceCourante] && AMBIANCES[ambianceCourante].decor)) {
+                const cle = premiereAmbianceAvecDecor();
+                if (cle) definirAmbiance(cle); else decorActif = false;
+            }
+            if (decorToggle) {
+                decorToggle.checked = decorActif;
+                appliquerDecor();
+                decorToggle.addEventListener('change', () => {
+                    if (decorToggle.checked && !(AMBIANCES[ambianceCourante] && AMBIANCES[ambianceCourante].decor)) {
+                        const cle = premiereAmbianceAvecDecor();
+                        if (!cle) { decorToggle.checked = false; return; }
+                        definirAmbiance(cle);
+                        try { window.localStorage.setItem(CLE_AMBIANCE, cle); } catch (erreur) {}
+                    }
+                    definirDecor(decorToggle.checked);
                 });
             }
 
