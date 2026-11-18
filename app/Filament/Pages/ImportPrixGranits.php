@@ -100,7 +100,7 @@ class ImportPrixGranits extends Page implements HasForms
                     ]),
 
                 Forms\Components\Section::make('2. Vérification avant import')
-                    ->description('Les lignes en rouge ne seront pas importées tant que le granit n\'est pas rattaché manuellement.')
+                    ->description('Les lignes en rouge ne seront pas importées tant que le granit n\'est pas rattaché manuellement. Le bouton « Valider l\'import en ignorant les warnings » importe les lignes complètes et laisse de côté les autres.')
                     ->visible(fn () => $this->analyseEffectuee)
                     ->schema([
                         Forms\Components\Repeater::make('lignes')
@@ -209,10 +209,14 @@ class ImportPrixGranits extends Page implements HasForms
         ]);
     }
 
-    public function validerImport(): void
+    /**
+     * Valide l'import. Avec $ignorerWarnings, les champs obligatoires ne sont pas contrôlés : les lignes
+     * complètes sont importées et les autres (granit non reconnu, prix ou marge illisible) sont laissées de côté.
+     */
+    public function validerImport(bool $ignorerWarnings = false): void
     {
-        $etat = $this->form->getState();
-        $monument = Monument::find($etat['monument_id']);
+        $etat = $ignorerWarnings ? $this->form->getRawState() : $this->form->getState();
+        $monument = Monument::find($etat['monument_id'] ?? null);
 
         if (! $monument) {
             Notification::make()->title('Monument introuvable.')->danger()->send();
@@ -224,12 +228,15 @@ class ImportPrixGranits extends Page implements HasForms
             return;
         }
 
+        $idsGranits = Granit::pluck('id')->flip()->all();
         $reussies = 0;
+        $ignorees = [];
         $poidsAAppliquer = null;
         $tagsAAttacher = [];
 
-        foreach ($etat['lignes'] as $ligne) {
-            if (empty($ligne['granit_id']) || $ligne['prix_fob'] === null || $ligne['taux_marge'] === null) {
+        foreach ($etat['lignes'] ?? [] as $ligne) {
+            if (! self::ligneImportable($ligne, $idsGranits)) {
+                $ignorees[] = self::libelleLigne($ligne);
                 continue;
             }
 
@@ -259,12 +266,42 @@ class ImportPrixGranits extends Page implements HasForms
             $monument->tags()->syncWithoutDetaching([$tag->id]);
         }
 
-        Notification::make()
-            ->title("{$reussies} tarif(s) importé(s) sur « {$monument->nom} »")
-            ->success()
-            ->send();
+        $this->notifierResultat("{$reussies} tarif(s) importé(s) sur « {$monument->nom} »", $ignorees);
 
         $this->reinitialiser();
+    }
+
+    /** Une ligne est importable si le granit est rattaché (et existe) et que le prix FOB et le taux de marge sont des nombres. */
+    protected static function ligneImportable(array $ligne, array $idsGranits): bool
+    {
+        return ! empty($ligne['granit_id'])
+            && isset($idsGranits[$ligne['granit_id']])
+            && isset($ligne['prix_fob']) && is_numeric($ligne['prix_fob'])
+            && isset($ligne['taux_marge']) && is_numeric($ligne['taux_marge']);
+    }
+
+    protected static function libelleLigne(array $ligne): string
+    {
+        $nom = trim((string) ($ligne['nom_detecte'] ?? ''));
+
+        return $nom !== '' ? $nom : 'ligne non reconnue';
+    }
+
+    /** Notification de fin d'import : succès simple, ou succès + liste des lignes laissées de côté. */
+    protected function notifierResultat(string $titre, array $ignorees): void
+    {
+        $notification = Notification::make()->title($titre);
+
+        if ($ignorees === []) {
+            $notification->success();
+        } else {
+            $notification
+                ->warning()
+                ->body(count($ignorees).' ligne(s) ignorée(s) : '.implode(', ', $ignorees).'.')
+                ->persistent();
+        }
+
+        $notification->send();
     }
 
     /** Enregistre les prix d'une semelle (une référence) pour les granits collés, sans toucher au prix du monument. */
@@ -275,9 +312,12 @@ class ImportPrixGranits extends Page implements HasForms
             return;
         }
 
+        $idsGranits = Granit::pluck('id')->flip()->all();
         $reussies = 0;
+        $ignorees = [];
         foreach ($lignes as $ligne) {
-            if (empty($ligne['granit_id']) || $ligne['prix_fob'] === null || $ligne['taux_marge'] === null) {
+            if (! self::ligneImportable($ligne, $idsGranits)) {
+                $ignorees[] = self::libelleLigne($ligne);
                 continue;
             }
 
@@ -297,10 +337,7 @@ class ImportPrixGranits extends Page implements HasForms
             $reussies++;
         }
 
-        Notification::make()
-            ->title("{$reussies} prix de la semelle {$reference} importé(s) sur « {$monument->nom} »")
-            ->success()
-            ->send();
+        $this->notifierResultat("{$reussies} prix de la semelle {$reference} importé(s) sur « {$monument->nom} »", $ignorees);
 
         $this->reinitialiser();
     }

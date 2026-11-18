@@ -11,6 +11,9 @@
                 <x-filament::button wire:click="validerImport" color="success">
                     Valider l'import
                 </x-filament::button>
+                <x-filament::button wire:click="validerImport(true)" color="warning">
+                    Valider l'import en ignorant les warnings
+                </x-filament::button>
                 <x-filament::button wire:click="reinitialiser" color="gray">
                     Recommencer
                 </x-filament::button>
