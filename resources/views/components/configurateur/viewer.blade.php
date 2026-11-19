@@ -42,6 +42,9 @@
     // Décor paysager 360° (interrupteur « Décor jardin ») : le paysage de l'ambiance choisie s'affiche en fond.
     $decorCfg = array_merge(['actif' => true, 'defaut' => false, 'hauteur_facteur' => 0.6, 'angle_camera' => 83], (array) config('configurateur.decor', []));
 
+    // État relu depuis le code ?c=… de l'adresse (déjà revalidé côté serveur par la page) : null = ouverture normale.
+    $etatInitialJs = is_array($etatInitial ?? null) ? $etatInitial : null;
+
     // Curseurs de réglage du granit : réservés aux administrateurs (la page admin passe :peut-regler="true").
     $peutReglerGranits = ($peutRegler ?? false) && $renduRealiste;
 
@@ -407,6 +410,45 @@
             border-radius: 0;
             z-index: 2147483000;
         }
+        /* Bulle d'invitation au plein écran : au-dessus du bouton, à chaque ouverture, pendant quelques secondes. */
+        #config-fullscreen-bulle {
+            position: absolute;
+            bottom: 64px;
+            right: 336px;
+            z-index: 12;
+            padding: 8px 12px;
+            font-family: inherit;
+            font-size: 0.8rem;
+            line-height: 1.2;
+            white-space: nowrap;
+            color: #fff;
+            background: rgba(17,17,17,0.92);
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 8px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+            cursor: pointer;
+            animation: eg-bulle-entree 0.35s ease-out;
+        }
+        #config-fullscreen-bulle[hidden] { display: none; }
+        #config-fullscreen-bulle::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            right: 15px;
+            width: 10px;
+            height: 10px;
+            background: rgb(17,17,17);
+            border-right: 1px solid rgba(255,255,255,0.25);
+            border-bottom: 1px solid rgba(255,255,255,0.25);
+            transform: rotate(45deg);
+        }
+        @keyframes eg-bulle-entree {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #config-fullscreen-bulle { animation: none; }
+        }
         #config-selected-swatch {
             width: 14px;
             height: 14px;
@@ -590,6 +632,9 @@
                 <svg class="icone-agrandir" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
                 <svg class="icone-reduire" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h5V3M21 8h-5V3M3 16h5v5M21 16h-5v5"/></svg>
             </button>
+            <button type="button" id="config-fullscreen-bulle" hidden>Cliquez pour le plein écran</button>
+            {{-- Donne au JS l'accès à la page Livewire (enregistrement de la configuration ; toujours présent, pas seulement pour les admins). --}}
+            <div x-data x-init="window.egWire = $wire" hidden></div>
 
             <div id="config-sidebar">
                 <div id="config-main-tabs">
@@ -758,6 +803,28 @@
             // FOND BLANC / NOIR (choix mémorisé dans le navigateur du visiteur)
             // ==========================================
             const configWrapper = document.querySelector('#config-wrapper');
+
+            // ==========================================
+            // ÉTAT ENREGISTRÉ (code ?c=… de l'adresse, sinon mémoire du navigateur, sinon valeurs par défaut)
+            // ==========================================
+            const MONUMENT_ID = @json($monument->id ?? 0);
+            const ETAT_INITIAL = @json($etatInitialJs);
+            const CLE_ETAT = 'eg_configurateur_etat_' + MONUMENT_ID;
+            const lireLocal = (cle) => { try { return window.localStorage.getItem(cle); } catch (erreur) { return null; } };
+            const ecrireLocal = (cle, valeur) => { try { window.localStorage.setItem(cle, valeur); } catch (erreur) {} };
+            // Granit, soubassement noir et semelle : propres à chaque monument (restaurés plus bas, au chargement du modèle).
+            let etatDepart = ETAT_INITIAL;
+            if (!etatDepart) {
+                try { etatDepart = JSON.parse(lireLocal(CLE_ETAT) || 'null'); } catch (erreur) { etatDepart = null; }
+                if (!etatDepart || typeof etatDepart !== 'object') etatDepart = null;
+            }
+            // Fond, décor et ambiance : communs à tous les monuments (mémoire existante). Un lien ?c=… les remplace avant leur initialisation.
+            if (ETAT_INITIAL) {
+                if (ETAT_INITIAL.fo === 'blanc' || ETAT_INITIAL.fo === 'noir') ecrireLocal('eg_configurateur_fond', ETAT_INITIAL.fo);
+                if (typeof ETAT_INITIAL.de === 'boolean') ecrireLocal('eg_configurateur_decor', ETAT_INITIAL.de ? '1' : '0');
+                if (typeof ETAT_INITIAL.am === 'string') ecrireLocal('eg_configurateur_ambiance', ETAT_INITIAL.am);
+            }
+
             const fondToggle = document.querySelector('#config-fond-toggle');
             const CLE_FOND = 'eg_configurateur_fond';
             const definirFond = (clair) => {
@@ -1281,7 +1348,11 @@
                     // Le .glb optimisé n'a plus de texture embarquée : on sélectionne un premier granit
                     // pour ne pas afficher un monument blanc au chargement.
                     if (!document.querySelector('.config-granit-swatch.selected') && swatches[0]) {
-                        swatches[0].click();
+                        // Granit mémorisé (ou du lien ?c=…) s'il existe encore, sinon le premier.
+                        const granitDepart = etatDepart && etatDepart.g != null
+                            ? [...swatches].find(s => s.dataset.id === String(etatDepart.g))
+                            : null;
+                        (granitDepart || swatches[0]).click();
                     }
                 });
 
@@ -1317,6 +1388,7 @@
                         selectedSwatch.style.backgroundImage = `url(${texturePath})`;
                         selectedSwatch.style.backgroundSize = 'cover';
                         synchroniserReglages();
+                        configWrapper.dispatchEvent(new CustomEvent('eg:granit-choisi'));
                     });
                 });
 
@@ -1346,8 +1418,95 @@
                     }
                 }
 
+                // Restauration du soubassement noir et de la semelle (lien ?c=… ou mémoire du navigateur).
+                if (etatDepart) {
+                    if (typeof etatDepart.sb === 'boolean') bicolorNoirToggle.checked = etatDepart.sb;
+                    if (typeof etatDepart.se === 'boolean') semelleToggle.checked = etatDepart.se;
+                    if (semelleTypeSelect && etatDepart.st != null) {
+                        const optionType = [...semelleTypeSelect.options].find(o => o.value === String(etatDepart.st));
+                        if (optionType) {
+                            optionType.selected = true;
+                            filtrerDimensionsParType(optionType.dataset.code);
+                        }
+                    }
+                    if (semelleDimSelect && etatDepart.sd != null) {
+                        const optionDim = [...semelleDimSelect.options].find(o => o.value === String(etatDepart.sd) && !o.disabled);
+                        if (optionDim) semelleDimSelect.value = optionDim.value;
+                    }
+                    if (semelleTypeSection) {
+                        semelleTypeSection.classList.toggle('disabled', !semelleToggle.checked);
+                    }
+                }
+
                 mettreAJourSemelleVisibilite();
             });
+
+            // ── Enregistrement de l'état : mémoire du navigateur tout de suite, serveur (code ?c=…) après une courte pause ──
+            (function () {
+                let pret = false;       // devient vrai une fois l'état d'ouverture appliqué : avant, on n'enregistre rien
+                let minuterie = null;
+                let dernierJson = null; // dernier état connu du serveur (évite les envois inutiles)
+
+                const etatCourant = () => {
+                    const granit = document.querySelector('.config-granit-swatch.selected');
+                    const entier = (valeur) => { const n = parseInt(valeur, 10); return Number.isFinite(n) ? n : null; };
+                    return {
+                        g: granit ? entier(granit.dataset.id) : null,
+                        sb: !!bicolorNoirToggle.checked,
+                        se: !!semelleToggle.checked,
+                        st: semelleTypeSelect ? entier(semelleTypeSelect.value) : null,
+                        sd: semelleDimSelect ? entier(semelleDimSelect.value) : null,
+                        fo: fondToggle ? (fondToggle.checked ? 'blanc' : 'noir') : null,
+                        de: decorToggle ? !!decorToggle.checked : null,
+                        am: ambianceSelect ? ambianceSelect.value : null,
+                    };
+                };
+
+                const majAdresse = (code) => {
+                    try {
+                        const url = new URL(window.location.href);
+                        if (url.searchParams.get('c') === code) return;
+                        url.searchParams.set('c', code);
+                        window.history.replaceState(window.history.state, '', url.toString());
+                    } catch (erreur) { /* adresse non modifiable : le configurateur reste utilisable */ }
+                };
+
+                const envoyer = async () => {
+                    const etat = etatCourant();
+                    const json = JSON.stringify(etat);
+                    if (json === dernierJson) return;
+                    if (!window.egWire || typeof window.egWire.call !== 'function') return;
+                    try {
+                        const code = await window.egWire.call('enregistrerConfiguration', etat);
+                        if (typeof code === 'string' && /^[0-9a-f]{12,32}$/.test(code)) {
+                            dernierJson = json;
+                            majAdresse(code);
+                        }
+                    } catch (erreur) { /* enregistrement impossible : on réessaiera au prochain changement */ }
+                };
+
+                const planifier = () => {
+                    if (!pret) return;
+                    const etat = etatCourant();
+                    ecrireLocal(CLE_ETAT, JSON.stringify({ g: etat.g, sb: etat.sb, se: etat.se, st: etat.st, sd: etat.sd }));
+                    clearTimeout(minuterie);
+                    minuterie = setTimeout(envoyer, 900);
+                };
+
+                const demarrer = () => {
+                    if (pret) return;
+                    pret = true;
+                    // Ouvert par un lien ?c=… : le serveur connaît déjà cet état. Sinon on l'enregistre pour obtenir le code.
+                    if (ETAT_INITIAL) dernierJson = JSON.stringify(etatCourant());
+                    planifier();
+                };
+
+                // Premier choix de granit terminé = état d'ouverture en place. Garde-fou si aucun granit ne peut être choisi.
+                configWrapper.addEventListener('eg:granit-choisi', () => { demarrer(); planifier(); });
+                modelViewer.addEventListener('load', () => { setTimeout(demarrer, 6000); });
+                // Tout changement d'un interrupteur ou d'une liste (soubassement, semelle, type, dimension, fond, décor, ambiance).
+                configWrapper.addEventListener('change', planifier);
+            })();
 
             // ── Plein écran (toute la scène : visualiseur + barre latérale) ──
             (function () {
@@ -1355,6 +1514,25 @@
                 if (!btn || !configWrapper) return;
 
                 let pseudo = false;
+
+                // Bulle d'invitation : affichée à chaque ouverture, quelques secondes. Tant qu'elle est là, un simple clic
+                // (sans glisser) sur la scène 3D ouvre le vrai plein écran, une seule fois. Le navigateur exige ce geste.
+                const bulle = document.querySelector('#config-fullscreen-bulle');
+                let arme = false;
+                let minuterieBulle = null;
+                let departClic = null;
+
+                function desarmer() {
+                    arme = false;
+                    clearTimeout(minuterieBulle);
+                    if (bulle) bulle.hidden = true;
+                }
+                function armer() {
+                    if (!bulle || arme || actif()) return;
+                    arme = true;
+                    bulle.hidden = false;
+                    minuterieBulle = setTimeout(desarmer, 8000);
+                }
 
                 function elementPleinEcran() {
                     return document.fullscreenElement || document.webkitFullscreenElement || null;
@@ -1364,6 +1542,7 @@
                 }
                 function rafraichir() {
                     const on = actif();
+                    if (on) desarmer();
                     configWrapper.classList.toggle('en-plein-ecran', on);
                     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
                     const libelle = on ? 'Quitter le plein écran' : 'Plein écran';
@@ -1406,8 +1585,35 @@
                 }
 
                 btn.addEventListener('click', function () {
+                    desarmer();
                     if (actif()) sortir(); else entrer();
                 });
+
+                if (bulle) {
+                    bulle.addEventListener('click', function () {
+                        desarmer();
+                        if (!actif()) entrer();
+                    });
+                    modelViewer.addEventListener('pointerdown', function (e) {
+                        departClic = { x: e.clientX, y: e.clientY };
+                    });
+                    modelViewer.addEventListener('click', function (e) {
+                        if (!arme) return;
+                        // Un glissement (rotation du monument) n'est pas un clic.
+                        if (departClic && Math.hypot(e.clientX - departClic.x, e.clientY - departClic.y) > 6) return;
+                        desarmer();
+                        if (!actif()) entrer();
+                    });
+                    // La bulle apparaît quand le monument est affiché (ou au bout de 3 s si le chargement traîne).
+                    let bulleProgrammee = false;
+                    const programmerBulle = () => {
+                        if (bulleProgrammee) return;
+                        bulleProgrammee = true;
+                        setTimeout(armer, 600);
+                    };
+                    modelViewer.addEventListener('load', programmerBulle);
+                    setTimeout(programmerBulle, 3000);
+                }
                 document.addEventListener('fullscreenchange', rafraichir);
                 document.addEventListener('webkitfullscreenchange', rafraichir);
                 // Le mode simulé n'a pas de touche Échap native.

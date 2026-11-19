@@ -4,5 +4,6 @@
         :granits="$granits"
         :semelle-types="$semelleTypes"
         :semelle-dimensions="$semelleDimensions"
+        :etat-initial="$etatInitial"
     />
 </x-filament-panels::page>
