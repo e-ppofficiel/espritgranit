@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Concerns\GereConfigurationPartagee;
+use App\Filament\Concerns\GerePrixConfigurateur;
 use App\Models\Granit;
 use App\Models\Monument;
 use Filament\Facades\Filament;
@@ -13,6 +14,7 @@ use Livewire\Attributes\Renderless;
 class Configurateur extends Page
 {
     use GereConfigurationPartagee;
+    use GerePrixConfigurateur;
 
     protected static ?string $navigationIcon = 'heroicon-o-cube-transparent';
 

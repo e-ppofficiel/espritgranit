@@ -78,6 +78,15 @@
         }
     }
     $decorDisponible = array_filter($ambiances, fn ($a) => ! empty($a['decor'])) !== [];
+
+    // Prix interactif (HT / TTC, département de livraison). Le serveur ne fournit que des montants finaux (coefficient
+    // appliqué). Un souci de calcul (table absente, etc.) masque simplement le bloc : le configurateur reste utilisable.
+    $prixInit = null;
+    try {
+        $prixInit = \App\Services\ConfigurateurPrix::donneesInitiales($monument, \Filament\Facades\Filament::auth()->user());
+    } catch (\Throwable $e) {
+        report($e);
+    }
 @endphp
 
 <div wire:ignore>
@@ -308,35 +317,68 @@
             gap: 16px;
             align-content: start;
         }
+        /* Vignettes de granit en relief (v20) : voile posé par-dessus l'image (biseau clair en haut à gauche,
+           arête sombre en bas à droite, reflet doux), ombre portée marquée, cadre doré à la sélection.
+           Un box-shadow « inset » sur une <img> est masqué par l'image : d'où le pseudo-élément ::before. */
         .config-granit-swatch {
+            position: relative;
             cursor: pointer;
             text-align: center;
             background: none;
             border: none;
             padding: 0;
+            transition: transform 0.15s ease;
         }
         .config-granit-swatch img {
             width: 100%;
             aspect-ratio: 1;
             object-fit: cover;
-            border-radius: 8px;
-            border: 2px solid transparent;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.14);
             display: block;
             box-shadow:
-                0 6px 14px rgba(0, 0, 0, 0.45),
-                inset 0 1px 1px rgba(255, 255, 255, 0.18),
-                inset 0 -2px 3px rgba(0, 0, 0, 0.35);
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
+                0 9px 16px rgba(0, 0, 0, 0.65),
+                0 2px 4px rgba(0, 0, 0, 0.55);
+            transition: box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        .config-granit-swatch::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            aspect-ratio: 1;
+            border-radius: 10px;
+            pointer-events: none;
+            background: radial-gradient(120% 120% at 28% 22%,
+                rgba(255, 255, 255, 0.24) 0%,
+                rgba(255, 255, 255, 0.06) 38%,
+                rgba(0, 0, 0, 0) 55%,
+                rgba(0, 0, 0, 0.34) 100%);
+            box-shadow:
+                inset 2px 2px 3px rgba(255, 255, 255, 0.4),
+                inset -2px -3px 5px rgba(0, 0, 0, 0.6),
+                inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+        }
+        .config-granit-swatch:hover {
+            transform: translateY(-2px);
         }
         .config-granit-swatch:hover img {
-            transform: translateY(-2px);
             box-shadow:
-                0 10px 18px rgba(0, 0, 0, 0.5),
-                inset 0 1px 1px rgba(255, 255, 255, 0.2),
-                inset 0 -2px 3px rgba(0, 0, 0, 0.35);
+                0 13px 22px rgba(0, 0, 0, 0.7),
+                0 3px 6px rgba(0, 0, 0, 0.55);
         }
         .config-granit-swatch.selected img {
             border-color: #d97706;
+            box-shadow:
+                0 0 0 1px rgba(217, 119, 6, 0.55),
+                0 0 16px rgba(217, 119, 6, 0.45),
+                0 9px 16px rgba(0, 0, 0, 0.65);
+        }
+        .config-granit-swatch.selected::before {
+            box-shadow:
+                inset 2px 2px 3px rgba(255, 255, 255, 0.3),
+                inset -2px -3px 5px rgba(0, 0, 0, 0.5);
         }
         .config-granit-swatch span {
             display: block;
@@ -346,6 +388,19 @@
             line-height: 1.2;
         }
         .config-granit-swatch.selected span {
+            color: #d97706;
+            font-weight: 700;
+        }
+        /* Supplément de prix sous le nom (« Base », « +90 € », « sur demande »). */
+        .config-granit-prix {
+            display: block;
+            margin-top: 2px;
+            font-size: 0.64rem;
+            line-height: 1.2;
+            color: rgba(255,255,255,0.45);
+        }
+        .config-granit-prix:empty { display: none; }
+        .config-granit-swatch.selected .config-granit-prix {
             color: #d97706;
         }
         #config-selected-label {
@@ -359,6 +414,61 @@
             gap: 8px;
             z-index: 10;
         }
+        /* Prix interactif (v21) : carte en haut à droite de la zone 3D, à gauche du panneau de 320 px. Sur fond sombre
+           translucide quel que soit le fond choisi, donc lisible partout. Sur écran étroit : sous le nom du modèle. */
+        #config-prix {
+            position: absolute;
+            top: 12px;
+            right: 336px;
+            z-index: 11;
+            width: 340px;
+            box-sizing: border-box;
+            padding: 12px 14px;
+            color: #fff;
+            background: rgba(10, 10, 10, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 12px;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+            font-size: 0.78rem;
+            line-height: 1.35;
+            transition: opacity 0.15s;
+        }
+        #config-prix.calcul { opacity: 0.65; }
+        @media (max-width: 1500px) {
+            #config-prix { top: 56px; left: 20px; right: auto; }
+        }
+        #config-prix-montants {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        #config-prix-ht { font-size: 1.55rem; font-weight: 700; color: #d97706; letter-spacing: 0.3px; }
+        #config-prix-ht small, #config-prix-ttc small { font-size: 0.7rem; font-weight: 600; opacity: 0.8; }
+        #config-prix-ttc { font-size: 0.95rem; font-weight: 600; color: rgba(255,255,255,0.85); }
+        #config-prix-message { margin-top: 2px; font-weight: 600; color: #fbbf24; }
+        #config-prix-message:empty { display: none; }
+        #config-prix-detail { margin-top: 6px; color: rgba(255,255,255,0.8); }
+        #config-prix-detail div { display: flex; justify-content: space-between; gap: 10px; }
+        #config-prix-detail div span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+        #config-prix-detail:empty { display: none; }
+        #config-prix-notes { margin-top: 6px; font-size: 0.7rem; font-style: italic; color: rgba(255,255,255,0.55); }
+        #config-prix-notes:empty { display: none; }
+        #config-prix-selecteurs { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+        #config-prix-selecteurs label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.7rem; color: rgba(255,255,255,0.55); }
+        #config-prix-selecteurs select {
+            width: 62%;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.22);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.74rem;
+        }
+        #config-prix-selecteurs select option { background: #0a0a0a; color: #fff; }
+        #config-prix-selecteurs select.a-choisir { border-color: #d97706; }
         /* Bouton plein écran : en bas à droite de la zone 3D (à gauche de la barre latérale de 320 px). */
         #config-fullscreen-btn {
             position: absolute;
@@ -623,6 +733,38 @@
                 <button id="config-rotate-btn" type="button">⟳ 360°</button>
             </div>
 
+            @if($prixInit)
+                <div id="config-prix" aria-live="polite">
+                    <div id="config-prix-montants">
+                        <span id="config-prix-ht"></span>
+                        <span id="config-prix-ttc"></span>
+                    </div>
+                    <div id="config-prix-message">Choisissez un granit pour afficher le prix.</div>
+                    <div id="config-prix-detail"></div>
+                    <div id="config-prix-notes"></div>
+                    <div id="config-prix-selecteurs">
+                        @if($prixInit['admin'])
+                            <label>Prix pour l'agence
+                                <select id="config-prix-agence" aria-label="Agence dont on affiche le prix">
+                                    <option value="">Coefficient général</option>
+                                    @foreach($prixInit['agences'] as $agencePrix)
+                                        <option value="{{ $agencePrix['id'] }}">{{ $agencePrix['libelle'] }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                        @endif
+                        <label>Département de livraison
+                            <select id="config-prix-departement" aria-label="Département de livraison">
+                                <option value="">Choisir…</option>
+                                @foreach($prixInit['departements'] as $departementPrix)
+                                    <option value="{{ $departementPrix['id'] }}">{{ $departementPrix['libelle'] }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                    </div>
+                </div>
+            @endif
+
             <div id="config-selected-label">
                 <span id="config-selected-name">—</span>
                 <span id="config-selected-swatch"></span>
@@ -775,6 +917,7 @@
                                     data-nom="{{ $granit->nom_commercial }}">
                                 <img src="{{ asset('storage/' . ($granit->image_vignette ?? $granit->image)) }}" alt="{{ $granit->nom_commercial }}">
                                 <span>{{ $granit->nom_commercial }}</span>
+                                <small class="config-granit-prix"></small>
                             </button>
                         @endif
                     @endforeach
@@ -809,6 +952,7 @@
             // ==========================================
             const MONUMENT_ID = @json($monument->id ?? 0);
             const ETAT_INITIAL = @json($etatInitialJs);
+            const PRIX_INIT = @json($prixInit);
             const CLE_ETAT = 'eg_configurateur_etat_' + MONUMENT_ID;
             const lireLocal = (cle) => { try { return window.localStorage.getItem(cle); } catch (erreur) { return null; } };
             const ecrireLocal = (cle, valeur) => { try { window.localStorage.setItem(cle, valeur); } catch (erreur) {} };
@@ -1506,6 +1650,160 @@
                 modelViewer.addEventListener('load', () => { setTimeout(demarrer, 6000); });
                 // Tout changement d'un interrupteur ou d'une liste (soubassement, semelle, type, dimension, fond, décor, ambiance).
                 configWrapper.addEventListener('change', planifier);
+            })();
+
+            // ── Prix interactif : le serveur renvoie des montants finaux (HT, TTC, détail) pour la configuration affichée ──
+            (function () {
+                const bloc = document.querySelector('#config-prix');
+                if (!bloc || !PRIX_INIT) return;
+
+                const elHt = bloc.querySelector('#config-prix-ht');
+                const elTtc = bloc.querySelector('#config-prix-ttc');
+                const elMessage = bloc.querySelector('#config-prix-message');
+                const elDetail = bloc.querySelector('#config-prix-detail');
+                const elNotes = bloc.querySelector('#config-prix-notes');
+                const selDepartement = bloc.querySelector('#config-prix-departement');
+                const selAgence = bloc.querySelector('#config-prix-agence');
+                const CLE_DEPARTEMENT = 'eg_configurateur_departement';
+                const CLE_AGENCE_PRIX = 'eg_configurateur_agence_prix';
+
+                const formatEntier = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                const formatCentimes = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const euro = (montant) => (Number.isInteger(montant) ? formatEntier : formatCentimes).format(montant).replace(/ | /g, ' ') + ' €';
+                const nombre = (valeur) => (typeof valeur === 'number' && Number.isFinite(valeur) ? valeur : null);
+
+                // Texte sous chaque vignette de granit : « Base », « +90 € » ou « sur demande ».
+                const majSupplements = (liste) => {
+                    if (!Array.isArray(liste)) return;
+                    const parId = new Map(liste.map(l => [String(l.id), nombre(l.montant)]));
+                    swatches.forEach(swatch => {
+                        const cible = swatch.querySelector('.config-granit-prix');
+                        if (!cible) return;
+                        if (!parId.has(swatch.dataset.id)) { cible.textContent = ''; return; }
+                        const montant = parId.get(swatch.dataset.id);
+                        cible.textContent = montant === null ? 'sur demande' : (montant > 0 ? '+' + euro(montant) : 'Base');
+                    });
+                };
+                majSupplements(PRIX_INIT.supplements);
+
+                // Choix mémorisés dans le navigateur (jamais dans le lien partagé).
+                const restaurer = (select, cle) => {
+                    if (!select) return;
+                    const memorise = lireLocal(cle);
+                    if (memorise === null) return;
+                    const option = [...select.options].find(o => o.value === memorise);
+                    if (option) select.value = option.value;
+                };
+                restaurer(selDepartement, CLE_DEPARTEMENT);
+                restaurer(selAgence, CLE_AGENCE_PRIX);
+
+                const ligne = (libelle, montant) => {
+                    const div = document.createElement('div');
+                    const gauche = document.createElement('span');
+                    const droite = document.createElement('span');
+                    gauche.textContent = libelle;
+                    droite.textContent = montant;
+                    div.append(gauche, ' ', droite);
+                    return div;
+                };
+                const avecUnite = (element, texte, unite) => {
+                    element.textContent = texte;
+                    const petit = document.createElement('small');
+                    petit.textContent = ' ' + unite;
+                    element.append(petit);
+                };
+
+                const afficher = (rep) => {
+                    elHt.textContent = '';
+                    elTtc.textContent = '';
+                    elMessage.textContent = '';
+                    elDetail.textContent = '';
+                    elNotes.textContent = '';
+                    if (selDepartement) selDepartement.classList.remove('a-choisir');
+
+                    if (!rep || rep.ok !== true) {
+                        elMessage.textContent = 'Prix indisponible pour le moment.';
+                        return;
+                    }
+                    majSupplements(rep.supplements);
+
+                    if (rep.statut === 'granit_absent') { elMessage.textContent = 'Choisissez un granit pour afficher le prix.'; return; }
+                    if (rep.statut === 'granit_sans_prix') { elMessage.textContent = 'Prix sur demande pour ce granit.'; return; }
+
+                    const lignes = Array.isArray(rep.lignes) ? rep.lignes : [];
+                    const granit = lignes.find(l => l.cle === 'granit');
+                    const supplementGranit = granit ? nombre(granit.montant) : null;
+                    const base = nombre(rep.base);
+                    if (base !== null) {
+                        const libelleBase = granit && !(supplementGranit > 0) ? 'Base (granit ' + granit.libelle + ')' : 'Base';
+                        elDetail.append(ligne(libelleBase, euro(base)));
+                    }
+                    lignes.forEach(l => {
+                        const montant = nombre(l.montant);
+                        if (montant === null || (l.cle === 'granit' && !(montant > 0))) return;
+                        elDetail.append(ligne('+ ' + (l.cle === 'granit' ? 'granit ' : '') + l.libelle, '+' + euro(montant)));
+                    });
+
+                    if (rep.statut === 'departement_manquant') {
+                        elMessage.textContent = 'Sélectionnez un département de livraison pour afficher le total.';
+                        if (selDepartement) selDepartement.classList.add('a-choisir');
+                    } else if (nombre(rep.total_ht) !== null) {
+                        avecUnite(elHt, euro(rep.total_ht), 'HT');
+                        if (nombre(rep.total_ttc) !== null) avecUnite(elTtc, euro(rep.total_ttc), 'TTC');
+                    }
+
+                    const notes = Array.isArray(rep.notes) ? rep.notes.slice() : [];
+                    if (nombre(rep.coefficient) !== null) notes.push('Coefficient appliqué : ×' + String(rep.coefficient).replace('.', ','));
+                    elNotes.textContent = notes.join(' ');
+                };
+
+                const etatPrix = () => {
+                    const granit = document.querySelector('.config-granit-swatch.selected');
+                    const entier = (valeur) => { const n = parseInt(valeur, 10); return Number.isFinite(n) ? n : null; };
+                    return {
+                        g: granit ? entier(granit.dataset.id) : null,
+                        sb: !!bicolorNoirToggle.checked,
+                        se: !!semelleToggle.checked,
+                        sd: semelleDimSelect ? entier(semelleDimSelect.value) : null,
+                    };
+                };
+
+                let minuterie = null;
+                let sequence = 0;
+                let demarre = false;
+
+                const calculer = async () => {
+                    demarre = true;
+                    const numero = ++sequence;
+                    if (!window.egWire || typeof window.egWire.call !== 'function') { afficher(null); return; }
+                    bloc.classList.add('calcul');
+                    try {
+                        const departement = selDepartement && selDepartement.value ? parseInt(selDepartement.value, 10) : null;
+                        const agence = selAgence && selAgence.value ? parseInt(selAgence.value, 10) : null;
+                        const rep = await window.egWire.call('calculerPrixConfiguration', etatPrix(), departement, agence);
+                        if (numero === sequence) afficher(rep);
+                    } catch (erreur) {
+                        if (numero === sequence) afficher(null);
+                    } finally {
+                        if (numero === sequence) bloc.classList.remove('calcul');
+                    }
+                };
+                const planifier = (delai) => { clearTimeout(minuterie); minuterie = setTimeout(calculer, delai); };
+
+                // Premier granit choisi = configuration d'ouverture en place ; sinon, garde-fou après le chargement du modèle.
+                configWrapper.addEventListener('eg:granit-choisi', () => planifier(demarre ? 300 : 0));
+                modelViewer.addEventListener('load', () => { setTimeout(() => { if (!demarre) planifier(0); }, 6500); });
+
+                // Soubassement, semelle (case, type, dimension), département, agence : recalcul après une courte pause.
+                configWrapper.addEventListener('change', (evenement) => {
+                    const cible = evenement.target;
+                    if (!cible || !cible.matches) return;
+                    if (cible === selDepartement) ecrireLocal(CLE_DEPARTEMENT, cible.value);
+                    if (cible === selAgence) ecrireLocal(CLE_AGENCE_PRIX, cible.value);
+                    if (cible.matches('#config-bicolor-noir-toggle, #config-semelle-toggle, #config-semelle-type-select, #config-semelle-dimensions, #config-prix-departement, #config-prix-agence')) {
+                        planifier(300);
+                    }
+                });
             })();
 
             // ── Plein écran (toute la scène : visualiseur + barre latérale) ──
