@@ -4,18 +4,6 @@
     // Rendu réaliste (voir config/configurateur.php) : mettre 'rendu_realiste' à false pour retrouver
     // exactement l'ancien comportement (sans éclairage studio, sans échelle de grain, sans finitions).
     $renduRealiste = (bool) config('configurateur.rendu_realiste', true);
-    // Éclairage : 'contraste' (reflets nets) ou 'studio' (doux, ancien) ; repli sur studio.hdr si le fichier manque.
-    $envFichiers = (array) config('configurateur.environnements', [
-        'studio' => 'configurateur/studio.hdr',
-        'contraste' => 'configurateur/studio-contraste.hdr',
-    ]);
-    $envChemin = $envFichiers[config('configurateur.environnement', 'contraste')] ?? 'configurateur/studio.hdr';
-    if (! file_exists(public_path($envChemin))) {
-        $envChemin = 'configurateur/studio.hdr';
-    }
-    $envHdr = ($renduRealiste && file_exists(public_path($envChemin)))
-        ? asset($envChemin)
-        : null;
     $exposition = (float) config('configurateur.exposition', 1.5);
     $echantillonDefaut = (float) config('configurateur.echantillon_defaut_cm', 30);
     $finitions = config('configurateur.finitions', [
@@ -32,12 +20,17 @@
         ['defaut' => 100, 'facteur_miroir' => 0.15, 'rugosite_mate' => 0.55],
         (array) config('configurateur.brillance', [])
     );
-    // « blanc » est l'ancienne valeur de config pour le fond clair : on accepte aussi « clair ».
-    $fondDefaut = in_array(config('configurateur.fond_defaut', 'noir'), ['blanc', 'clair'], true) ? 'blanc' : 'noir';
-    // Fond clair neutre (pas du blanc pur) : couleur hexadécimale de la config, avec repli sûr.
-    $fondClairCouleur = (string) config('configurateur.fond_clair_couleur', '#e6e3de');
-    if (! preg_match('/^#[0-9a-fA-F]{6}$/', $fondClairCouleur)) {
-        $fondClairCouleur = '#e6e3de';
+    // Fonds (v22) : couleurs de fond et ambiances viennent de la rubrique « Fonds du configurateur » de l'admin
+    // (table `fonds`) ; sans table ni ligne utilisable, repli sur config/configurateur.php (voir ConfigurateurFonds).
+    $fonds = \App\Services\ConfigurateurFonds::charger();
+    $fondsCouleurs = $fonds['couleurs'];
+    $fondDefaut = $fonds['couleur_defaut'];
+    $fondDefautInfos = $fondsCouleurs[0];
+    foreach ($fondsCouleurs as $fondCouleurListe) {
+        if ($fondCouleurListe['cle'] === $fondDefaut) {
+            $fondDefautInfos = $fondCouleurListe;
+            break;
+        }
     }
     // Décor paysager 360° (interrupteur « Décor jardin ») : le paysage de l'ambiance choisie s'affiche en fond.
     $decorCfg = array_merge(['actif' => true, 'defaut' => false, 'hauteur_facteur' => 0.6, 'angle_camera' => 83], (array) config('configurateur.decor', []));
@@ -48,34 +41,15 @@
     // Curseurs de réglage du granit : réservés aux administrateurs (la page admin passe :peut-regler="true").
     $peutReglerGranits = ($peutRegler ?? false) && $renduRealiste;
 
-    // Ambiances proposées à tous les visiteurs (sélecteur « Ambiance ») : l'éclairage par défaut ci-dessus, puis des paysages
-    // (config 'ambiances') dont les reflets apparaissent sur la pierre polie. Chaque ambiance a sa propre exposition.
-    // Un fichier manquant est simplement ignoré ; sans rendu réaliste, aucune ambiance n'est proposée.
-    $ambiances = [];
-    if ($envHdr) {
-        $ambiances['defaut'] = [
-            'libelle' => config('configurateur.ambiance_defaut_libelle', 'Studio'),
-            'url' => $envHdr,
-            'exposition' => $exposition,
-            'decor' => null,
-        ];
-        foreach ((array) config('configurateur.ambiances', []) as $cle => $ambiance) {
-            if ($cle === 'defaut' || empty($ambiance['fichier']) || ! file_exists(public_path($ambiance['fichier']))) {
-                continue;
-            }
-            // Image de fond : le fichier 'decor' de l'ambiance (ex. un JPG 4K plus net) ou, à défaut, son panorama HDR.
-            // 'decor' => false exclut l'ambiance du décor (ex. ciel seul).
-            $decorFichier = $ambiance['decor'] ?? $ambiance['fichier'];
-            $decorUrl = ($decorCfg['actif'] && $decorFichier !== false && file_exists(public_path($decorFichier)))
-                ? asset($decorFichier)
-                : null;
-            $ambiances[$cle] = [
-                'libelle' => $ambiance['libelle'] ?? ucfirst(str_replace('-', ' ', $cle)),
-                'url' => asset($ambiance['fichier']),
-                'exposition' => (float) ($ambiance['exposition'] ?? $exposition),
-                'decor' => $decorUrl,
-            ];
-        }
+    // Ambiances proposées à tous les visiteurs (onglet « Fond ») : paysages dont les reflets apparaissent sur la pierre polie,
+    // chacune avec sa propre exposition. Vide sans rendu réaliste. L'ambiance par défaut règle l'éclairage de départ.
+    $ambiances = $fonds['ambiances'];
+    $ambianceDefaut = $fonds['ambiance_defaut'];
+    if ($ambianceDefaut) {
+        $envHdr = $ambiances[$ambianceDefaut]['url'];
+        $exposition = (float) $ambiances[$ambianceDefaut]['exposition'];
+    } else {
+        $envHdr = null;
     }
     $decorDisponible = array_filter($ambiances, fn ($a) => ! empty($a['decor'])) !== [];
 
@@ -131,9 +105,9 @@
         #config-wrapper, #config-monument-viewer {
             transition: background-color 0.25s;
         }
-        #config-wrapper.fond-clair,
-        #config-wrapper.fond-clair #config-monument-viewer {
-            background-color: var(--fond-clair, #e6e3de);
+        #config-wrapper.fond-perso,
+        #config-wrapper.fond-perso #config-monument-viewer {
+            background-color: var(--fond-clair, #0a0a0a);
         }
         #config-wrapper.fond-clair #config-topbar,
         #config-wrapper.fond-clair #config-selected-label {
@@ -215,9 +189,9 @@
         .config-main-tab {
             flex: 1;
             text-align: center;
-            padding: 14px 8px;
-            font-size: 0.75rem;
-            letter-spacing: 0.5px;
+            padding: 14px 2px;
+            font-size: 0.72rem;
+            letter-spacing: 0.2px;
             color: rgba(255,255,255,0.35);
             cursor: not-allowed;
             border-bottom: 2px solid transparent;
@@ -227,6 +201,14 @@
             border-bottom-color: #d97706;
             cursor: default;
         }
+        /* Onglets utilisables (Monument, Fond) ; les autres restent grisés. */
+        .config-main-tab[data-onglet] {
+            cursor: pointer;
+            color: rgba(255,255,255,0.6);
+        }
+        .config-main-tab[data-onglet]:hover { color: #fff; }
+        .config-main-tab[data-onglet].active { cursor: default; color: #fff; }
+        .config-main-tab[data-onglet]:focus-visible { outline: 2px solid #d97706; outline-offset: -2px; }
         #config-sub-tabs {
             display: flex;
             gap: 24px;
@@ -308,6 +290,96 @@
         .config-toggle input:checked + .config-toggle-slider:before {
             transform: translateX(18px);
         }
+        /* Onglet « Fond » (v22) : l'onglet Monument garde tout son contenu ; l'onglet Fond le remplace. */
+        #config-fonds-panel {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+            gap: 10px;
+            overflow-y: auto;
+            padding: 16px 20px 20px;
+        }
+        #config-sidebar.onglet-fond > :not(#config-main-tabs):not(#config-fonds-panel) { display: none !important; }
+        #config-sidebar.onglet-fond #config-fonds-panel { display: flex; }
+        .config-fonds-titre {
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.4px;
+            color: #fff;
+            margin-top: 4px;
+        }
+        .config-fonds-grille {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .config-fonds-grille.ambiances { grid-template-columns: repeat(2, 1fr); }
+        /* Vignettes de fond en relief, comme celles des granits : voile (::before) posé sur la pastille. */
+        .config-fond-vignette {
+            position: relative;
+            cursor: pointer;
+            text-align: center;
+            background: none;
+            border: none;
+            padding: 0;
+            color: inherit;
+            font: inherit;
+            transition: transform 0.15s ease;
+        }
+        .config-fond-vignette:hover { transform: translateY(-2px); }
+        .config-fond-vignette:focus-visible { outline: 2px solid #d97706; outline-offset: 3px; border-radius: 10px; }
+        .config-fond-pastille {
+            display: block;
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 10px;
+            border: 2px solid rgba(255,255,255,0.14);
+            box-shadow: 0 9px 16px rgba(0,0,0,0.65), 0 2px 4px rgba(0,0,0,0.55);
+            transition: box-shadow 0.15s ease, border-color 0.15s ease;
+            box-sizing: border-box;
+        }
+        .config-fonds-grille.ambiances .config-fond-pastille { aspect-ratio: 2 / 1; }
+        .config-fond-vide {
+            background: linear-gradient(135deg, #2b3340, #11151b);
+        }
+        .config-fond-vignette::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            aspect-ratio: 1;
+            border-radius: 10px;
+            pointer-events: none;
+            background: radial-gradient(120% 120% at 28% 22%,
+                rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.06) 38%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.34) 100%);
+            box-shadow:
+                inset 2px 2px 3px rgba(255,255,255,0.4),
+                inset -2px -3px 5px rgba(0,0,0,0.6),
+                inset 0 0 0 1px rgba(0,0,0,0.35);
+        }
+        .config-fonds-grille.ambiances .config-fond-vignette::before { aspect-ratio: 2 / 1; }
+        .config-fond-vignette.selected .config-fond-pastille {
+            border-color: #d97706;
+            box-shadow: 0 0 0 1px rgba(217,119,6,0.55), 0 0 16px rgba(217,119,6,0.45), 0 9px 16px rgba(0,0,0,0.65);
+        }
+        .config-fond-vignette span.config-fond-nom {
+            display: block;
+            margin-top: 6px;
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.6);
+            line-height: 1.2;
+        }
+        .config-fond-vignette.selected span.config-fond-nom { color: #d97706; font-weight: 700; }
+        .config-fonds-note {
+            display: none;
+            font-size: 0.68rem;
+            line-height: 1.3;
+            color: rgba(255,255,255,0.5);
+        }
+        #config-wrapper.avec-decor .config-fonds-note.decor-actif { display: block; }
+        #config-fonds-panel .config-option-row { margin-top: 4px; }
         #config-granit-grid {
             flex: 1;
             overflow-y: auto;
@@ -709,7 +781,7 @@
         }
     </style>
 
-    <div id="config-wrapper" style="--fond-clair: {{ $fondClairCouleur }}" @if($fondDefaut === 'blanc') class="fond-clair" @endif>
+    <div id="config-wrapper" style="--fond-clair: {{ $fondDefautInfos['couleur'] }}" class="fond-perso{{ ! empty($fondDefautInfos['clair']) ? ' fond-clair' : '' }}">
         @if($glbUrl)
             <model-viewer id="config-monument-viewer"
                           src="{{ $glbUrl }}"
@@ -782,9 +854,10 @@
 
             <div id="config-sidebar">
                 <div id="config-main-tabs">
+                    <div class="config-main-tab active" data-onglet="monument" role="tab" tabindex="0" aria-selected="true">Monument</div>
                     <div class="config-main-tab">Accessoires</div>
                     <div class="config-main-tab">Vases</div>
-                    <div class="config-main-tab">Fond</div>
+                    <div class="config-main-tab" data-onglet="fond" role="tab" tabindex="0" aria-selected="false">Fond</div>
                 </div>
                 <div id="config-sub-tabs">
                     <div class="config-sub-tab active">Granits</div>
@@ -805,30 +878,42 @@
                             <span class="config-toggle-slider"></span>
                         </label>
                     </div>
-                    <div class="config-option-row">
-                        <span>Fond clair</span>
-                        <label class="config-toggle">
-                            <input type="checkbox" id="config-fond-toggle" @if($fondDefaut === 'blanc') checked @endif>
-                            <span class="config-toggle-slider"></span>
-                        </label>
+                </div>
+
+                <div id="config-fonds-panel" role="tabpanel" aria-label="Fond du configurateur">
+                    <div class="config-fonds-titre">Couleur de fond</div>
+                    <div class="config-fonds-grille" id="config-fonds-couleurs">
+                        @foreach($fondsCouleurs as $fondCouleur)
+                            <button type="button" class="config-fond-vignette" data-type="couleur" data-cle="{{ $fondCouleur['cle'] }}" aria-pressed="false" title="{{ $fondCouleur['libelle'] }}">
+                                <span class="config-fond-pastille" style="background: {{ $fondCouleur['couleur'] }}"></span>
+                                <span class="config-fond-nom">{{ $fondCouleur['libelle'] }}</span>
+                            </button>
+                        @endforeach
                     </div>
+                    <div class="config-fonds-note decor-actif">La couleur réapparaît quand le décor est désactivé.</div>
+
+                    @if(count($ambiances) > 1)
+                        <div class="config-fonds-titre">Ambiance</div>
+                        <div class="config-fonds-grille ambiances" id="config-fonds-ambiances">
+                            @foreach($ambiances as $cleAmbiance => $ambiance)
+                                <button type="button" class="config-fond-vignette" data-type="ambiance" data-cle="{{ $cleAmbiance }}" aria-pressed="false" title="{{ $ambiance['libelle'] }}{{ empty($ambiance['decor']) ? ' (reflets seuls, sans décor)' : '' }}">
+                                    @if(! empty($ambiance['vignette']))
+                                        <img class="config-fond-pastille" src="{{ $ambiance['vignette'] }}" alt="" loading="lazy">
+                                    @else
+                                        <span class="config-fond-pastille config-fond-vide"></span>
+                                    @endif
+                                    <span class="config-fond-nom">{{ $ambiance['libelle'] }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    @endif
                     @if($decorDisponible)
                         <div class="config-option-row">
-                            <span>Décor jardin 360°</span>
+                            <span>Afficher en décor (paysage 360°)</span>
                             <label class="config-toggle">
                                 <input type="checkbox" id="config-decor-toggle">
                                 <span class="config-toggle-slider"></span>
                             </label>
-                        </div>
-                    @endif
-                    @if(count($ambiances) > 1)
-                        <div class="config-option-row">
-                            <span>Ambiance</span>
-                            <select id="config-ambiance" aria-label="Ambiance (reflets sur la pierre)">
-                                @foreach($ambiances as $cle => $ambiance)
-                                    <option value="{{ $cle }}" @if($cle === 'defaut') selected @endif>{{ $ambiance['libelle'] }}</option>
-                                @endforeach
-                            </select>
                         </div>
                     @endif
                 </div>
@@ -966,42 +1051,52 @@
             }
             // Fond, décor et ambiance : communs à tous les monuments (mémoire existante). Un lien ?c=… les remplace avant leur initialisation.
             if (ETAT_INITIAL) {
-                if (ETAT_INITIAL.fo === 'blanc' || ETAT_INITIAL.fo === 'noir') ecrireLocal('eg_configurateur_fond', ETAT_INITIAL.fo);
+                if (typeof ETAT_INITIAL.fo === 'string' && ETAT_INITIAL.fo !== '') ecrireLocal('eg_configurateur_fond', ETAT_INITIAL.fo);
                 if (typeof ETAT_INITIAL.de === 'boolean') ecrireLocal('eg_configurateur_decor', ETAT_INITIAL.de ? '1' : '0');
                 if (typeof ETAT_INITIAL.am === 'string') ecrireLocal('eg_configurateur_ambiance', ETAT_INITIAL.am);
             }
 
-            const fondToggle = document.querySelector('#config-fond-toggle');
+            // Fonds (v22) : couleurs et ambiances de l'admin ; le choix de chaque visiteur est mémorisé dans son navigateur.
+            const FONDS_COULEURS = @json($fondsCouleurs);
+            const FOND_DEFAUT = @json($fondDefaut);
+            const AMBIANCE_DEFAUT = @json($ambianceDefaut);
             const CLE_FOND = 'eg_configurateur_fond';
-            const definirFond = (clair) => {
-                configWrapper.classList.toggle('fond-clair', clair);
-                if (fondToggle) fondToggle.checked = clair;
-            };
-            try {
-                const fondMemorise = window.localStorage.getItem(CLE_FOND);
-                if (fondMemorise === 'blanc' || fondMemorise === 'noir') definirFond(fondMemorise === 'blanc');
-            } catch (erreur) { /* stockage indisponible : on garde le fond par défaut */ }
-            if (fondToggle) {
-                fondToggle.addEventListener('change', () => {
-                    definirFond(fondToggle.checked);
-                    try { window.localStorage.setItem(CLE_FOND, fondToggle.checked ? 'blanc' : 'noir'); } catch (erreur) {}
+            let fondCourant = FOND_DEFAUT;
+            let ambianceCourante = AMBIANCE_DEFAUT;
+            const marquerVignettes = () => {
+                document.querySelectorAll('.config-fond-vignette').forEach((bouton) => {
+                    const choisi = bouton.dataset.cle === (bouton.dataset.type === 'couleur' ? fondCourant : ambianceCourante);
+                    bouton.classList.toggle('selected', choisi);
+                    bouton.setAttribute('aria-pressed', choisi ? 'true' : 'false');
                 });
-            }
+            };
+            const definirFond = (cle) => {
+                const fond = FONDS_COULEURS.find((f) => f.cle === cle);
+                if (!fond) return false;
+                fondCourant = cle;
+                configWrapper.style.setProperty('--fond-clair', fond.couleur);
+                configWrapper.classList.add('fond-perso');
+                configWrapper.classList.toggle('fond-clair', !!fond.clair);
+                marquerVignettes();
+                return true;
+            };
+            // Mémoire inconnue (fond désactivé ou supprimé depuis) : on garde le fond par défaut.
+            const fondMemorise = lireLocal(CLE_FOND);
+            if (fondMemorise) definirFond(fondMemorise);
+            marquerVignettes();
 
             // ==========================================
             // AMBIANCE (paysage reflété sur la pierre polie ; choix mémorisé dans le navigateur du visiteur)
             // ==========================================
             const AMBIANCES = @json($ambiances);
-            const ambianceSelect = document.querySelector('#config-ambiance');
             const CLE_AMBIANCE = 'eg_configurateur_ambiance';
-            let ambianceCourante = 'defaut';
             function definirAmbiance(cle) {
                 const ambiance = AMBIANCES[cle];
                 if (!ambiance) return false;
                 ambianceCourante = cle;
                 modelViewer.setAttribute('environment-image', ambiance.url);
                 modelViewer.setAttribute('exposure', ambiance.exposition);
-                if (ambianceSelect) ambianceSelect.value = cle;
+                marquerVignettes();
                 // Une ambiance sans décor (Studio, ciel seul) : l'interrupteur « Décor jardin » repasse sur off.
                 if (decorActif && !ambiance.decor) definirDecor(false);
                 else appliquerDecor();
@@ -1090,16 +1185,37 @@
             try {
                 decorActif = !!decorToggle && (window.localStorage.getItem(CLE_DECOR) ?? @json($decorCfg['defaut'] ? '1' : '0')) === '1';
             } catch (erreur) { decorActif = !!decorToggle && @json((bool) $decorCfg['defaut']); }
-            if (ambianceSelect) {
-                try {
-                    const ambianceMemorisee = window.localStorage.getItem(CLE_AMBIANCE);
-                    if (ambianceMemorisee && ambianceMemorisee !== 'defaut') definirAmbiance(ambianceMemorisee);
-                } catch (erreur) { /* stockage indisponible : ambiance par défaut */ }
-                ambianceSelect.addEventListener('change', () => {
-                    definirAmbiance(ambianceSelect.value);
-                    try { window.localStorage.setItem(CLE_AMBIANCE, ambianceSelect.value); } catch (erreur) {}
-                });
+            if (Object.keys(AMBIANCES).length > 1) {
+                const ambianceMemorisee = lireLocal(CLE_AMBIANCE);
+                if (ambianceMemorisee && ambianceMemorisee !== AMBIANCE_DEFAUT) definirAmbiance(ambianceMemorisee);
             }
+            // Clic sur une vignette de l'onglet « Fond » : couleur ou ambiance.
+            document.querySelectorAll('.config-fond-vignette').forEach((bouton) => {
+                bouton.addEventListener('click', () => {
+                    const cle = bouton.dataset.cle;
+                    const couleur = bouton.dataset.type === 'couleur';
+                    if (cle === (couleur ? fondCourant : ambianceCourante)) return; // déjà le choix courant
+                    if (couleur ? definirFond(cle) : definirAmbiance(cle)) {
+                        ecrireLocal(couleur ? CLE_FOND : CLE_AMBIANCE, cle);
+                        // Comme un interrupteur : l'enregistrement du lien partageable écoute les « change » qui remontent jusqu'au cadre.
+                        bouton.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+            });
+            // Onglets de la colonne de droite : Monument (granits, options) / Fond.
+            const colonne = document.querySelector('#config-sidebar');
+            const ongletsActifs = document.querySelectorAll('.config-main-tab[data-onglet]');
+            const choisirOnglet = (onglet) => {
+                if (colonne) colonne.classList.toggle('onglet-fond', onglet.dataset.onglet === 'fond');
+                ongletsActifs.forEach((o) => {
+                    o.classList.toggle('active', o === onglet);
+                    o.setAttribute('aria-selected', o === onglet ? 'true' : 'false');
+                });
+            };
+            ongletsActifs.forEach((onglet) => {
+                onglet.addEventListener('click', () => choisirOnglet(onglet));
+                onglet.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choisirOnglet(onglet); } });
+            });
             // Décor mémorisé « actif » mais ambiance courante sans décor (ex. Studio) : on prend la première ambiance avec décor.
             if (decorActif && !(AMBIANCES[ambianceCourante] && AMBIANCES[ambianceCourante].decor)) {
                 const cle = premiereAmbianceAvecDecor();
@@ -1602,9 +1718,9 @@
                         se: !!semelleToggle.checked,
                         st: semelleTypeSelect ? entier(semelleTypeSelect.value) : null,
                         sd: semelleDimSelect ? entier(semelleDimSelect.value) : null,
-                        fo: fondToggle ? (fondToggle.checked ? 'blanc' : 'noir') : null,
+                        fo: FONDS_COULEURS.length ? fondCourant : null,
                         de: decorToggle ? !!decorToggle.checked : null,
-                        am: ambianceSelect ? ambianceSelect.value : null,
+                        am: Object.keys(AMBIANCES).length > 1 ? ambianceCourante : null,
                     };
                 };
 

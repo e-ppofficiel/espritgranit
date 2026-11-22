@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ConfigurateurFonds;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 
@@ -14,7 +15,8 @@ use Illuminate\Database\UniqueConstraintViolationException;
  * Clés de l'état :
  *   g  id du granit (int|null)          sb  soubassement noir (bool)      se  avec semelle (bool)
  *   st id du type de semelle (int|null) sd  id de la dimension (int|null)
- *   fo fond « blanc »|« noir » (null si non proposé)   de décor jardin (bool|null)   am clé d'ambiance (string|null)
+ *   fo clé du fond de couleur (« noir », « blanc » ou un fond créé dans l'admin ; null si non proposé)   de décor jardin (bool|null)
+ *   am clé d'ambiance (string|null)
  */
 class ConfigurationPartagee extends Model
 {
@@ -77,12 +79,12 @@ class ConfigurationPartagee extends Model
             }
         }
 
+        // Fond et ambiance : clés connues (table `fonds` de l'admin, anciennes clés « blanc » / « noir » et config toujours acceptées).
         $fond = $brut['fo'] ?? null;
-        $fond = in_array($fond, ['blanc', 'noir'], true) ? $fond : null;
+        $fond = is_string($fond) && in_array($fond, ConfigurateurFonds::clesCouleurs(), true) ? $fond : null;
 
         $ambiance = $brut['am'] ?? null;
-        $ambiancesConnues = array_merge(['defaut'], array_map('strval', array_keys((array) config('configurateur.ambiances', []))));
-        $ambiance = is_string($ambiance) && in_array($ambiance, $ambiancesConnues, true) ? $ambiance : null;
+        $ambiance = is_string($ambiance) && in_array($ambiance, ConfigurateurFonds::clesAmbiances(), true) ? $ambiance : null;
 
         return [
             'g' => $granit,
