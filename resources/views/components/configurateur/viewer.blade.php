@@ -454,6 +454,8 @@
         #config-prix-detail div { display: flex; justify-content: space-between; gap: 10px; }
         #config-prix-detail div span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
         #config-prix-detail:empty { display: none; }
+        #config-prix-detail div.prix-sous { margin-top: -1px; font-size: 0.68rem; color: rgba(255,255,255,0.5); }
+        #config-prix-detail div.prix-demande { color: #fbbf24; font-weight: 600; }
         #config-prix-notes { margin-top: 6px; font-size: 0.7rem; font-style: italic; color: rgba(255,255,255,0.55); }
         #config-prix-notes:empty { display: none; }
         #config-prix-selecteurs { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
@@ -1679,8 +1681,8 @@
                     swatches.forEach(swatch => {
                         const cible = swatch.querySelector('.config-granit-prix');
                         if (!cible) return;
-                        if (!parId.has(swatch.dataset.id)) { cible.textContent = ''; return; }
-                        const montant = parId.get(swatch.dataset.id);
+                        // Granit sans ligne de prix pour ce monument : « sur demande » (comme un granit sans prix défini).
+                        const montant = parId.has(swatch.dataset.id) ? parId.get(swatch.dataset.id) : null;
                         cible.textContent = montant === null ? 'sur demande' : (montant > 0 ? '+' + euro(montant) : 'Base');
                     });
                 };
@@ -1731,17 +1733,30 @@
                     if (rep.statut === 'granit_sans_prix') { elMessage.textContent = 'Prix sur demande pour ce granit.'; return; }
 
                     const lignes = Array.isArray(rep.lignes) ? rep.lignes : [];
+                    const maj = (texte) => String(texte).charAt(0).toUpperCase() + String(texte).slice(1);
+                    const base = nombre(rep.base);
+                    // 1) Le granit choisi, avec son prix complet ; en dessous, d'où il vient : base + supplément.
                     const granit = lignes.find(l => l.cle === 'granit');
                     const supplementGranit = granit ? nombre(granit.montant) : null;
-                    const base = nombre(rep.base);
-                    if (base !== null) {
-                        const libelleBase = granit && !(supplementGranit > 0) ? 'Base (granit ' + granit.libelle + ')' : 'Base';
-                        elDetail.append(ligne(libelleBase, euro(base)));
+                    if (granit && base !== null && supplementGranit !== null) {
+                        elDetail.append(ligne('Granit ' + granit.libelle, euro(base + supplementGranit)));
+                        if (supplementGranit > 0) {
+                            const origine = ligne('base ' + euro(base) + ' + ' + euro(supplementGranit), '');
+                            origine.classList.add('prix-sous');
+                            elDetail.append(origine);
+                        }
                     }
+                    // 2) Les options : soubassement noir, semelle (ou « sur demande »), transport.
                     lignes.forEach(l => {
+                        if (l.cle === 'granit') return;
                         const montant = nombre(l.montant);
-                        if (montant === null || (l.cle === 'granit' && !(montant > 0))) return;
-                        elDetail.append(ligne('+ ' + (l.cle === 'granit' ? 'granit ' : '') + l.libelle, '+' + euro(montant)));
+                        if (montant !== null) {
+                            elDetail.append(ligne('+ ' + maj(l.libelle), '+' + euro(montant)));
+                        } else if (l.sur_demande) {
+                            const demande = ligne('+ ' + maj(l.libelle), 'sur demande');
+                            demande.classList.add('prix-demande');
+                            elDetail.append(demande);
+                        }
                     });
 
                     if (rep.statut === 'departement_manquant') {
@@ -1750,6 +1765,7 @@
                     } else if (nombre(rep.total_ht) !== null) {
                         avecUnite(elHt, euro(rep.total_ht), 'HT');
                         if (nombre(rep.total_ttc) !== null) avecUnite(elTtc, euro(rep.total_ttc), 'TTC');
+                        if (rep.semelle_sur_demande) elMessage.textContent = 'Total hors semelle (prix sur demande).';
                     }
 
                     const notes = Array.isArray(rep.notes) ? rep.notes.slice() : [];

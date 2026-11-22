@@ -154,6 +154,7 @@ class ConfigurateurPrix
             'total_ttc' => null,
             'tva' => $tva,
             'notes' => [],
+            'semelle_sur_demande' => false,
             'supplements' => $sup['granits'],
             'coefficient' => $admin ? $coefficient : null,
         ];
@@ -191,11 +192,11 @@ class ConfigurateurPrix
         if (! empty($etat['se']) && ! empty($etat['sd'])) {
             $semelle = SemelleDevis::calculer((int) $monument->id, (int) $granitId, (int) $etat['sd']);
             $poidsKg += $semelle['poids_kg'];
-            if ($semelle['dimension_id'] !== null && $semelle['prix'] === null) {
-                $resultat['notes'][] = 'Semelle non chiffrée pour ce granit : prix hors semelle.';
-            }
         }
         $prixSemelle = $semelle['prix'] ?? null;
+        // Semelle demandée mais sans prix pour ce granit : ligne « sur demande » et total « hors semelle » (comme le devis,
+        // qui n'ajoute alors rien pour la semelle ni son poids).
+        $semelleSurDemande = $semelle !== null && $semelle['dimension_id'] !== null && $prixSemelle === null;
 
         // Transport : dépend du département choisi et du poids total (monument + semelle).
         $prixTransport = null;
@@ -218,6 +219,8 @@ class ConfigurateurPrix
         }
         if ($prixSemelle !== null) {
             $lignes[] = ['cle' => 'semelle', 'libelle' => $semelle['libelle'] ?: ($semelle['reference'] ?: 'semelle'), 'montant' => round($prixSemelle * $coefficient, 2)];
+        } elseif ($semelleSurDemande) {
+            $lignes[] = ['cle' => 'semelle', 'libelle' => $semelle['libelle'] ?: ($semelle['reference'] ?: 'semelle'), 'montant' => null, 'sur_demande' => true];
         }
         if ($prixTransport !== null) {
             $lignes[] = ['cle' => 'transport', 'libelle' => 'transport ' . trim($departement->code . ' – ' . $departement->nom), 'montant' => round($prixTransport * $coefficient, 2)];
@@ -230,7 +233,7 @@ class ConfigurateurPrix
             $totalHt = round($sommeBrute * $coefficient, 2);
             $somme = $base;
             foreach ($lignes as $ligne) {
-                $somme += $ligne['montant'];
+                $somme += $ligne['montant'] ?? 0;
             }
             $base = round($base + ($totalHt - $somme), 2);
 
@@ -240,6 +243,7 @@ class ConfigurateurPrix
 
         $resultat['base'] = $base;
         $resultat['lignes'] = $lignes;
+        $resultat['semelle_sur_demande'] = $semelleSurDemande;
 
         return $resultat;
     }
