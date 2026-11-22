@@ -114,6 +114,7 @@ class SemelleDimensionsRelationManager extends RelationManager
                 Tables\Actions\Action::make('generer_standard')
                     ->label('Générer les références standard')
                     ->icon('heroicon-o-sparkles')
+                    ->button() // bouton d'en-tête : on garde le libellé visible (les actions de ligne sont en pictos)
                     ->color('gray')
                     ->requiresConfirmation()
                     ->modalHeading('Générer les références standard')
