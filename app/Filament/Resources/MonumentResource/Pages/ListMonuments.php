@@ -25,6 +25,13 @@ class ListMonuments extends ListRecords
 
         if ($this->filtreSteleArt()) {
             $query->where('reference_interne', 'like', 'ST-%');
+        } else {
+            // Les monuments Stèle Art (référence ST-…) ne sont visibles que dans « Monuments Stèle Art ».
+            // Les références vides (NULL) restent affichées.
+            $query->where(function (Builder $q) {
+                $q->whereNull('reference_interne')
+                    ->orWhere('reference_interne', 'not like', 'ST-%');
+            });
         }
 
         return $query;
