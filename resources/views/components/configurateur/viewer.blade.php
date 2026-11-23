@@ -295,9 +295,10 @@
             display: none;
             flex: 1;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
             overflow-y: auto;
-            padding: 16px 20px 20px;
+            overflow-x: hidden;
+            padding: 12px 16px 14px;
         }
         #config-sidebar.onglet-fond > :not(#config-main-tabs):not(#config-fonds-panel) { display: none !important; }
         #config-sidebar.onglet-fond #config-fonds-panel { display: flex; }
@@ -308,12 +309,14 @@
             color: #fff;
             margin-top: 4px;
         }
+        /* v22.1 : vignettes réduites (mêmes proportions) pour que l'onglet tienne sans défilement.
+           minmax(0, 1fr) : une image ne peut plus élargir sa colonne (cause du débordement à droite). */
         .config-fonds-grille {
             display: grid;
-            gap: 14px;
-            grid-template-columns: repeat(3, 1fr);
+            gap: 8px 10px;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
         }
-        .config-fonds-grille.ambiances { grid-template-columns: repeat(2, 1fr); }
+        .config-fonds-grille.ambiances { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         /* Vignettes de fond en relief, comme celles des granits : voile (::before) posé sur la pastille. */
         .config-fond-vignette {
             position: relative;
@@ -324,6 +327,7 @@
             padding: 0;
             color: inherit;
             font: inherit;
+            min-width: 0;
             transition: transform 0.15s ease;
         }
         .config-fond-vignette:hover { transform: translateY(-2px); }
@@ -333,9 +337,9 @@
             width: 100%;
             aspect-ratio: 1;
             object-fit: cover;
-            border-radius: 10px;
-            border: 2px solid rgba(255,255,255,0.14);
-            box-shadow: 0 9px 16px rgba(0,0,0,0.65), 0 2px 4px rgba(0,0,0,0.55);
+            border-radius: 8px;
+            border: 1.5px solid rgba(255,255,255,0.14);
+            box-shadow: 0 5px 9px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.55);
             transition: box-shadow 0.15s ease, border-color 0.15s ease;
             box-sizing: border-box;
         }
@@ -350,26 +354,29 @@
             left: 0;
             right: 0;
             aspect-ratio: 1;
-            border-radius: 10px;
+            border-radius: 8px;
             pointer-events: none;
             background: radial-gradient(120% 120% at 28% 22%,
                 rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.06) 38%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.34) 100%);
             box-shadow:
-                inset 2px 2px 3px rgba(255,255,255,0.4),
-                inset -2px -3px 5px rgba(0,0,0,0.6),
+                inset 1px 1px 2px rgba(255,255,255,0.4),
+                inset -1px -2px 3px rgba(0,0,0,0.6),
                 inset 0 0 0 1px rgba(0,0,0,0.35);
         }
         .config-fonds-grille.ambiances .config-fond-vignette::before { aspect-ratio: 2 / 1; }
         .config-fond-vignette.selected .config-fond-pastille {
             border-color: #d97706;
-            box-shadow: 0 0 0 1px rgba(217,119,6,0.55), 0 0 16px rgba(217,119,6,0.45), 0 9px 16px rgba(0,0,0,0.65);
+            box-shadow: 0 0 0 1px rgba(217,119,6,0.55), 0 0 12px rgba(217,119,6,0.45), 0 5px 9px rgba(0,0,0,0.6);
         }
         .config-fond-vignette span.config-fond-nom {
             display: block;
-            margin-top: 6px;
-            font-size: 0.7rem;
+            margin-top: 4px;
+            font-size: 0.62rem;
             color: rgba(255,255,255,0.6);
             line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .config-fond-vignette.selected span.config-fond-nom { color: #d97706; font-weight: 700; }
         .config-fonds-note {
