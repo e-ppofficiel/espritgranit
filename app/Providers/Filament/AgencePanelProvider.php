@@ -10,7 +10,6 @@ use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Filament\Widgets;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -41,10 +40,8 @@ class AgencePanelProvider extends PanelProvider
                 Pages\Dashboard::class,
             ])
             ->discoverWidgets(in: app_path('Filament/Agence/Widgets'), for: 'App\\Filament\\Agence\\Widgets')
-            ->widgets([
-                Widgets\AccountWidget::class,
-                Widgets\FilamentInfoWidget::class,
-            ])
+            // Widgets du tableau de bord : ceux de app/Filament/Agence/Widgets (découverts ci-dessus).
+            // Les widgets génériques Filament (compte, version) ont été retirés : sans intérêt pour une agence.
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
