@@ -2,6 +2,7 @@
 
 namespace App\Filament\Agence\Resources;
 
+use App\Filament\Agence\Pages\Configurateur;
 use App\Filament\Agence\Resources\MonumentCatalogResource\Pages;
 use App\Models\Monument;
 use Filament\Resources\Resource;
@@ -18,6 +19,12 @@ class MonumentCatalogResource extends Resource
     protected static ?string $modelLabel = 'monument';
     protected static ?string $pluralModelLabel = 'catalogue';
     protected static ?string $navigationLabel = 'Catalogue';
+
+    /** Catalogue en lecture seule : l'agence consulte et configure, elle ne crée pas de monument. */
+    public static function canCreate(): bool
+    {
+        return false;
+    }
 
     public static function getEloquentQuery(): Builder
     {
@@ -63,10 +70,13 @@ class MonumentCatalogResource extends Resource
                     ->preload()
                     ->searchable(),
             ])
+            // Un clic sur la ligne ou sur le picto ouvre le configurateur 3D du monument.
+            ->recordUrl(fn (Monument $record): string => Configurateur::getUrl(['monument' => $record->id]))
             ->actions([
-                Tables\Actions\ViewAction::make()
+                Tables\Actions\Action::make('configurer')
                     ->label('Configurer')
-                    ->icon('heroicon-o-cube-transparent'),
+                    ->icon('heroicon-o-cube-transparent')
+                    ->url(fn (Monument $record): string => Configurateur::getUrl(['monument' => $record->id])),
             ]);
     }
 
