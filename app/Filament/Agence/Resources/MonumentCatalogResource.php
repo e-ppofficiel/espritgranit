@@ -5,6 +5,7 @@ namespace App\Filament\Agence\Resources;
 use App\Filament\Agence\Pages\Configurateur;
 use App\Filament\Agence\Resources\MonumentCatalogResource\Pages;
 use App\Models\Monument;
+use Filament\Navigation\NavigationItem;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -19,6 +20,35 @@ class MonumentCatalogResource extends Resource
     protected static ?string $modelLabel = 'monument';
     protected static ?string $pluralModelLabel = 'catalogue';
     protected static ?string $navigationLabel = 'Catalogue';
+
+    /**
+     * Deux entrées de menu pour la même page (même principe que « Monuments » / « Monuments Stèle Art » côté admin) :
+     * « Catalogue » (hors références ST-) et « Catalogue Stèle Art » (références ST- uniquement, ?stele_art=1).
+     */
+    public static function getNavigationItems(): array
+    {
+        return [
+            // Entrée standard, reproduite à l'identique du comportement par défaut de Filament.
+            NavigationItem::make(static::getNavigationLabel())
+                ->group(static::getNavigationGroup())
+                ->parentItem(static::getNavigationParentItem())
+                ->icon(static::getNavigationIcon())
+                ->activeIcon(static::getActiveNavigationIcon())
+                ->isActiveWhen(fn () => request()->routeIs(static::getRouteBaseName() . '.*') && ! request()->boolean('stele_art'))
+                ->badge(static::getNavigationBadge(), color: static::getNavigationBadgeColor())
+                ->badgeTooltip(static::getNavigationBadgeTooltip())
+                ->sort(static::getNavigationSort())
+                ->url(static::getNavigationUrl()),
+
+            // Même page, filtrée sur les références Stèle Art (préfixe ST-).
+            NavigationItem::make('Catalogue Stèle Art')
+                ->group(static::getNavigationGroup())
+                ->icon(static::getNavigationIcon())
+                ->isActiveWhen(fn () => request()->routeIs(static::getRouteBaseName() . '.index') && request()->boolean('stele_art'))
+                ->sort(static::getNavigationSort())
+                ->url(fn (): string => static::getUrl('index', ['stele_art' => 1])),
+        ];
+    }
 
     /** Catalogue en lecture seule : l'agence consulte et configure, elle ne crée pas de monument. */
     public static function canCreate(): bool

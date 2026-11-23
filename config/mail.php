@@ -115,4 +115,17 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Notifications internes (devis, commandes, adhésions)
+    |--------------------------------------------------------------------------
+    |
+    | Adresses de l'équipe Esprit Granit qui reçoivent, en COPIE CACHÉE, les notifications
+    | de nouveau devis / commande / demande d'adhésion. Plusieurs adresses séparées par des
+    | virgules dans .env : NOTIFICATION_EMAILS="a@exemple.fr,b@exemple.fr". Vide = aucun envoi.
+    | Voir App\Services\NotificationsAdmin.
+    |
+    */
+    'notifications_admin' => env('NOTIFICATION_EMAILS'),
+
 ];

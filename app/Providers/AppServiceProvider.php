@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\NotificationsAdmin;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\AssociateAction;
 use Filament\Tables\Actions\AttachAction;
@@ -28,6 +29,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configurerTableauxFilament();
+
+        // Notifications e-mail internes (devis, commande, adhésion) — voir config/mail.php (NOTIFICATION_EMAILS).
+        NotificationsAdmin::enregistrer();
     }
 
     /**

@@ -9,6 +9,13 @@ use Illuminate\Support\Facades\Storage;
 class DevisPdfGenerator
 {
     /**
+     * Fond fixe (RVB) sur lequel les visuels sont posés dans le PDF : un gris très clair, quel que soit le fond
+     * choisi dans le configurateur. Les captures sont des PNG transparents : sans cette étape, la conversion
+     * en JPEG remplace la transparence par du noir.
+     */
+    protected const FOND_VISUEL = [243, 244, 246];
+
+    /**
      * Génère et retourne la réponse HTTP de téléchargement du PDF pour ce devis.
      */
     public static function telecharger(Devis $devis): \Illuminate\Http\Response
@@ -118,16 +125,28 @@ class DevisPdfGenerator
             $largeurCible = (int) round($largeurOrigine * $ratio);
             $hauteurCible = (int) round($hauteurOrigine * $ratio);
 
+            // 1. Redimensionnement vers une image intermédiaire qui CONSERVE la transparence
+            //    (imagecopyresampled ne mélange pas la transparence avec le fond de destination).
+            $redimensionnee = imagecreatetruecolor($largeurCible, $hauteurCible);
+            imagealphablending($redimensionnee, false);
+            imagesavealpha($redimensionnee, true);
+            imagefill($redimensionnee, 0, 0, imagecolorallocatealpha($redimensionnee, 0, 0, 0, 127));
+            imagecopyresampled($redimensionnee, $source, 0, 0, 0, 0, $largeurCible, $hauteurCible, $largeurOrigine, $hauteurOrigine);
+
+            // 2. Pose sur le fond clair fixe (imagecopy mélange correctement les pixels transparents
+            //    et semi-transparents, ombres comprises) puis encodage en JPEG.
             $cible = imagecreatetruecolor($largeurCible, $hauteurCible);
-            $blanc = imagecolorallocate($cible, 255, 255, 255);
-            imagefill($cible, 0, 0, $blanc);
-            imagecopyresampled($cible, $source, 0, 0, 0, 0, $largeurCible, $hauteurCible, $largeurOrigine, $hauteurOrigine);
+            [$r, $v, $b] = static::FOND_VISUEL;
+            imagefill($cible, 0, 0, imagecolorallocate($cible, $r, $v, $b));
+            imagealphablending($cible, true);
+            imagecopy($cible, $redimensionnee, 0, 0, 0, 0, $largeurCible, $hauteurCible);
 
             ob_start();
             imagejpeg($cible, null, $qualite);
             $contenu = ob_get_clean();
 
             imagedestroy($source);
+            imagedestroy($redimensionnee);
             imagedestroy($cible);
 
             return 'data:image/jpeg;base64,' . base64_encode($contenu);
