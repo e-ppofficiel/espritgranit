@@ -15,6 +15,14 @@
         'BICOLOR' => ['rugosite' => 0.03, 'brillance' => true],
         'GRANIT' => ['rugosite' => 0.04, 'brillance' => true],
     ]);
+    // Rotation automatique du monument (le visiteur l'arrête / la relance avec le bouton « ⟳ 360° » ; son choix est mémorisé).
+    // Réglages facultatifs dans config/configurateur.php (valeurs par défaut ci-dessous si absents) :
+    //   'rotation_auto' => true (false : le monument ne tourne que si le visiteur clique sur « ⟳ 360° »),
+    //   'rotation_auto_vitesse' => 12 (degrés par seconde),
+    //   'rotation_auto_delai' => 4000 (millisecondes d'attente après une manipulation du visiteur avant de reprendre).
+    $rotationAuto = (bool) config('configurateur.rotation_auto', true);
+    $rotationVitesse = max(1.0, min(60.0, (float) config('configurateur.rotation_auto_vitesse', 12)));
+    $rotationDelai = max(0, (int) config('configurateur.rotation_auto_delai', 4000));
     // Brillance par granit (0 à 100) : 'defaut' redonne exactement la rugosité de base de $finitions.
     $brillanceCfg = array_merge(
         ['defaut' => 100, 'facteur_miroir' => 0.15, 'rugosite_mate' => 0.55],
@@ -168,6 +176,11 @@
         }
         #config-rotate-btn:hover {
             background: rgba(255,255,255,0.15);
+        }
+        /* Rotation automatique en cours : contour ambre (bouton « enfoncé »). */
+        #config-wrapper #config-rotate-btn[aria-pressed="true"] {
+            border-color: #d97706;
+            box-shadow: 0 0 0 1px #d97706 inset;
         }
         #config-sidebar {
             position: absolute;
@@ -804,6 +817,9 @@
                           max-camera-orbit="auto 90deg auto"
                           camera-orbit="0deg 75deg 80%"
                           orbit-sensitivity="0.4"
+                          @if($rotationAuto) auto-rotate @endif
+                          auto-rotate-delay="{{ $rotationDelai }}"
+                          rotation-per-second="{{ $rotationVitesse }}deg"
                           alt="{{ $monument->nom }}">
             </model-viewer>
 
@@ -1475,9 +1491,37 @@
                 }
             };
 
+            // ==========================================
+            // ROTATION AUTOMATIQUE : le monument tourne seul ; elle se met en pause quand le visiteur manipule le monument
+            // (reprise après auto-rotate-delay, géré par model-viewer) et le bouton « ⟳ 360° » l'arrête / la relance pour de bon.
+            // Choix mémorisé dans le navigateur ; sans choix mémorisé, pas de rotation pour qui a demandé « moins d'animations ».
+            // ==========================================
+            const ROTATION_AUTO = @json($rotationAuto);
+            const CLE_ROTATION = 'eg_configurateur_rotation';
+            let rotationActive = ROTATION_AUTO;
+            let rotationMemorisee = null;
+            try { rotationMemorisee = window.localStorage.getItem(CLE_ROTATION); } catch (erreur) { /* stockage indisponible : on garde le réglage par défaut */ }
+            if (rotationMemorisee === '1') rotationActive = true;
+            else if (rotationMemorisee === '0') rotationActive = false;
+            else if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) rotationActive = false;
+
+            function appliquerRotation(actif, memoriser) {
+                rotationActive = actif;
+                modelViewer.autoRotate = actif;
+                modelViewer.toggleAttribute('auto-rotate', actif);
+                if (rotateBtn) {
+                    rotateBtn.setAttribute('aria-pressed', actif ? 'true' : 'false');
+                    rotateBtn.title = actif ? 'Arrêter la rotation automatique' : 'Lancer la rotation automatique';
+                }
+                if (memoriser) {
+                    try { window.localStorage.setItem(CLE_ROTATION, actif ? '1' : '0'); } catch (erreur) { /* sans conséquence */ }
+                }
+            }
+            appliquerRotation(rotationActive, false);
+
             if (rotateBtn) {
                 rotateBtn.addEventListener('click', () => {
-                    modelViewer.autoRotate = !modelViewer.autoRotate;
+                    appliquerRotation(!rotationActive, true);
                 });
             }
 

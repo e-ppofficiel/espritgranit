@@ -58,11 +58,50 @@ class DevisPdfGenerator
 
         return [
             'devis' => $devis,
+            'logoAgence' => static::logoAgence($devis->agence?->logo),
             // Regroupées par paires : affichage 2 images par ligne dans le PDF, chaque
             // image étant réduite (donc plus nette visuellement) que la version en pleine
             // largeur d'origine, dont la résolution est plafonnée par la capture d'écran.
             'visuelsParPaires' => array_chunk($visuels, 2),
             'visuelParDefaut' => $visuelParDefaut,
+        ];
+    }
+
+    /**
+     * Logo de l'agence pour l'en-tête du PDF : image encodée (posée sur fond blanc, comme la page) et taille
+     * d'affichage en pixels (contenue dans un cadre de 200 x 60, proportions conservées). Null sans logo
+     * ou si le fichier est introuvable / illisible : le PDF s'affiche alors comme avant.
+     *
+     * @return array{src: string, largeur: int, hauteur: int}|null
+     */
+    protected static function logoAgence(?string $chemin): ?array
+    {
+        if (! is_string($chemin) || trim($chemin) === '') {
+            return null;
+        }
+
+        $disk = Storage::disk('public');
+        if (! $disk->exists($chemin)) {
+            return null;
+        }
+
+        $absolu = $disk->path($chemin);
+        $infos = @getimagesize($absolu);
+        if (! $infos || $infos[0] < 1 || $infos[1] < 1) {
+            return null;
+        }
+
+        $src = static::redimensionnerEtEncoder($absolu, 600, 92, [255, 255, 255]);
+        if (! $src) {
+            return null;
+        }
+
+        $ratio = min(200 / $infos[0], 60 / $infos[1], 1);
+
+        return [
+            'src' => $src,
+            'largeur' => max(1, (int) round($infos[0] * $ratio)),
+            'hauteur' => max(1, (int) round($infos[1] * $ratio)),
         ];
     }
 
@@ -98,7 +137,7 @@ class DevisPdfGenerator
      * page (2 par ligne), une résolution plus modeste qu'en pleine largeur suffit
      * largement — et allège d'autant plus le PDF.
      */
-    protected static function redimensionnerEtEncoder(string $cheminAbsolu, int $largeurMax = 900, int $qualite = 88): ?string
+    protected static function redimensionnerEtEncoder(string $cheminAbsolu, int $largeurMax = 900, int $qualite = 88, ?array $fond = null): ?string
     {
         if (! extension_loaded('gd')) {
             $mime = mime_content_type($cheminAbsolu) ?: 'image/png';
@@ -138,7 +177,7 @@ class DevisPdfGenerator
             // 2. Pose sur le fond clair fixe (imagecopy mélange correctement les pixels transparents
             //    et semi-transparents, ombres comprises) puis encodage en JPEG.
             $cible = imagecreatetruecolor($largeurCible, $hauteurCible);
-            [$r, $v, $b] = static::FOND_VISUEL;
+            [$r, $v, $b] = $fond ?? static::FOND_VISUEL;
             imagefill($cible, 0, 0, imagecolorallocate($cible, $r, $v, $b));
             imagealphablending($cible, true);
             imagecopy($cible, $redimensionnee, 0, 0, 0, 0, $largeurCible, $hauteurCible);

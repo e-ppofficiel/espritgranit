@@ -107,6 +107,9 @@
                 </span>
             </td>
             <td class="meta-droite">
+                @if(! empty($logoAgence))
+                    <img src="{{ $logoAgence['src'] }}" width="{{ $logoAgence['largeur'] }}" height="{{ $logoAgence['hauteur'] }}" style="margin-bottom: 8px;"><br>
+                @endif
                 Émis le {{ $devis->created_at->format('d/m/Y') }}
                 @if($devis->reference_client)
                     <br>Réf. client : {{ $devis->reference_client }}

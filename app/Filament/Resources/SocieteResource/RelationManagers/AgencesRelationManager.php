@@ -21,6 +21,15 @@ class AgencesRelationManager extends RelationManager
                 Forms\Components\TextInput::make('nom')
                     ->required()
                     ->maxLength(255),
+                Forms\Components\FileUpload::make('logo')
+                    ->label('Logo de l\'agence')
+                    ->helperText('Affiché dans l\'en-tête du PDF des devis. PNG, JPG ou WebP, 2 Mo maximum (fond transparent accepté).')
+                    ->image()
+                    ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
+                    ->maxSize(2048)
+                    ->disk('public')
+                    ->directory('agences/logos')
+                    ->visibility('public'),
                 Forms\Components\TextInput::make('adresse')
                     ->maxLength(255),
                 Forms\Components\TextInput::make('adresse_livraison')

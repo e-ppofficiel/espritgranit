@@ -35,6 +35,16 @@ class AgenceResource extends Resource
                     ->required()
                     ->maxLength(255),
 
+                Forms\Components\FileUpload::make('logo')
+                    ->label('Logo de l\'agence')
+                    ->helperText('Affiché dans l\'en-tête du PDF des devis. PNG, JPG ou WebP, 2 Mo maximum (fond transparent accepté).')
+                    ->image()
+                    ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
+                    ->maxSize(2048)
+                    ->disk('public')
+                    ->directory('agences/logos')
+                    ->visibility('public'),
+
                 Forms\Components\Section::make('Adresse de l\'agence')
                     ->schema([
                         Forms\Components\TextInput::make('adresse')
@@ -102,6 +112,12 @@ class AgenceResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\ImageColumn::make('logo')
+                    ->label('Logo')
+                    ->disk('public')
+                    ->height(32)
+                    ->extraImgAttributes(['style' => 'object-fit: contain; max-width: 80px;'])
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('societe.enseigne')
                     ->label('Société')
                     ->searchable()

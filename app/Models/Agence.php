@@ -21,6 +21,7 @@ class Agence extends Model
         'email',
         'telephone',
         'coefficient_vente',
+        'logo',
     ];
 
     public function societe()
