@@ -10,6 +10,9 @@ class Devis extends Model
 {
     use LogsActivity;
 
+    /** Nombre maximum de visuels (captures du configurateur) rattachés à un devis. */
+    public const MAX_VISUELS = 4;
+
     protected $table = 'devis';
 
     protected $casts = [
@@ -41,6 +44,9 @@ class Devis extends Model
         'semelle_reference',
         'semelle_libelle',
         'prix_semelle',
+        'reference_client',
+        'reference_interne',
+        'reference_usine',
     ];
 
     public function getActivitylogOptions(): LogOptions
@@ -63,6 +69,9 @@ class Devis extends Model
                 'coefficient_applique',
                 'prix_final',
                 'commentaire',
+                'reference_client',
+                'reference_interne',
+                'reference_usine',
             ])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs();

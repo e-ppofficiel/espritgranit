@@ -107,8 +107,13 @@
                 </span>
             </td>
             <td class="meta-droite">
-                Émis le {{ $devis->created_at->format('d/m/Y') }}<br>
-                Réf. interne : {{ $devis->id }}
+                Émis le {{ $devis->created_at->format('d/m/Y') }}
+                @if($devis->reference_client)
+                    <br>Réf. client : {{ $devis->reference_client }}
+                @endif
+                @if($devis->reference_interne)
+                    <br>Réf. interne : {{ $devis->reference_interne }}
+                @endif
             </td>
         </tr>
     </table>

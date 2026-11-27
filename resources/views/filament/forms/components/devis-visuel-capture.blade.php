@@ -14,6 +14,7 @@
     if (! file_exists(public_path($envChemin))) {
         $envChemin = 'configurateur/studio.hdr';
     }
+    $maxVisuels = \App\Models\Devis::MAX_VISUELS;
     $envHdr = ($renduRealiste && file_exists(public_path($envChemin))) ? asset($envChemin) : null;
     $exposition = (float) config('configurateur.exposition', 1.5);
     $rendu = [
@@ -36,7 +37,7 @@
 <div
     wire:ignore
     wire:key="devis-visuel-capture-widget"
-    x-data="devisVisuelCapture({{ Illuminate\Support\Js::from($monumentIdInitial) }}, {{ Illuminate\Support\Js::from($granitIdInitial) }}, {{ Illuminate\Support\Js::from($soubassementNoirInitial) }}, {{ Illuminate\Support\Js::from($rendu) }})"
+    x-data="devisVisuelCapture({{ Illuminate\Support\Js::from($monumentIdInitial) }}, {{ Illuminate\Support\Js::from($granitIdInitial) }}, {{ Illuminate\Support\Js::from($soubassementNoirInitial) }}, {{ Illuminate\Support\Js::from($rendu) }}, {{ (int) $maxVisuels }})"
     x-init="init()"
     style="border-radius: 12px; overflow: hidden; border: 1px solid rgba(0,0,0,0.1);"
 >
@@ -89,16 +90,18 @@
         </template>
     </div>
 
-    <div style="display:flex; align-items:center; justify-content:space-between; padding: 10px 14px; background:#111827; gap: 12px; flex-wrap: wrap;">
+    <div x-ref="barre" style="display:flex; align-items:center; justify-content:space-between; padding: 10px 14px; background:#111827; gap: 12px; flex-wrap: wrap;">
         <span x-text="statut" style="font-size:0.78rem; color:rgba(255,255,255,0.6); flex:1;"></span>
 
         <div style="display:flex; gap:8px;">
             <button
                 type="button"
                 x-on:click="capturer()"
-                x-bind:disabled="!glbUrl || captureEnCours"
-                x-bind:style="(!glbUrl || captureEnCours) ? 'opacity:0.5; cursor:not-allowed;' : 'opacity:1; cursor:pointer;'"
-                style="background:rgba(255,255,255,0.1); color:#fff; padding:8px 14px; border-radius:6px; font-size:0.82rem; border:1px solid rgba(255,255,255,0.2); white-space:nowrap;"
+                x-bind:disabled="!glbUrl || captureEnCours || placesRestantes() <= 0"
+                x-bind:title="placesRestantes() <= 0 ? ('Maximum ' + maxVisuels + ' photos par devis') : ''"
+                x-bind:style="((!glbUrl || captureEnCours || placesRestantes() <= 0) ? 'opacity:0.5; cursor:not-allowed; ' : 'opacity:1; cursor:pointer; ')
+                    + (fondClair ? 'background:#000; border:1px solid #000;' : 'background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);')"
+                style="color:#fff; padding:8px 14px; border-radius:6px; font-size:0.82rem; white-space:nowrap;"
             >
                 <span x-show="!captureEnCours">+ Capturer cette vue</span>
                 <span x-show="captureEnCours" x-cloak>Capture...</span>
@@ -117,7 +120,8 @@
 </div>
 
 <script>
-    function devisVisuelCapture(monumentIdInitial, granitIdInitial, soubassementNoirInitial, rendu) {
+    function devisVisuelCapture(monumentIdInitial, granitIdInitial, soubassementNoirInitial, rendu, maxVisuels) {
+        maxVisuels = Number(maxVisuels) > 0 ? Number(maxVisuels) : 4;
         rendu = rendu || { realiste: false, echantillonDefaut: 30, finitions: {}, brillance: { defaut: 50, facteur_miroir: 0.15, rugosite_mate: 0.55 } };
 
         // Couleur de base d'origine de chaque matériau (sur un ancien .glb elle porte la teinte du granit : on la multiplie, on ne la remplace pas).
@@ -138,6 +142,40 @@
             dernierMonumentCharge: null,
             ecouteurAttache: false,
             captures: [],
+            // Limite de photos par devis : `existants` = photos déjà dans le champ « Visuel » (relevé périodique).
+            maxVisuels: maxVisuels,
+            existants: 0,
+            // Vrai quand la barre de boutons a un fond clair : le bouton « Capturer cette vue » passe alors en noir.
+            fondClair: false,
+
+            placesRestantes() {
+                return this.maxVisuels - this.existants - this.captures.length;
+            },
+
+            lireExistants() {
+                try {
+                    const racine = document.querySelector('[data-devis-visuel-field] .filepond--root');
+                    const pond = (racine && typeof FilePond !== 'undefined') ? FilePond.find(racine) : null;
+                    this.existants = pond ? pond.getFiles().length : 0;
+                } catch (e) {
+                    this.existants = 0;
+                }
+            },
+
+            // Détecte si le fond réel de la barre est clair (luminance > 0.6 sur un fond opaque).
+            detecterFond() {
+                try {
+                    const barre = this.$refs.barre;
+                    const couleur = barre ? getComputedStyle(barre).backgroundColor : '';
+                    const m = couleur.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+%?))?/);
+                    if (! m) { this.fondClair = false; return; }
+                    let alpha = m[4] === undefined ? 1 : (m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]));
+                    const lum = (0.2126 * Number(m[1]) + 0.7152 * Number(m[2]) + 0.0722 * Number(m[3])) / 255;
+                    this.fondClair = alpha > 0.5 && lum > 0.6;
+                } catch (e) {
+                    this.fondClair = false;
+                }
+            },
 
             estIdExploitable(valeur) {
                 if (valeur === null || valeur === undefined) return false;
@@ -146,6 +184,10 @@
             },
 
             init() {
+                this.detecterFond();
+                this.lireExistants();
+                setInterval(() => { this.detecterFond(); this.lireExistants(); }, 700);
+
                 if (! this.ecouteurAttache) {
                     window.addEventListener('devis-configurateur-change', (event) => {
                         const detail = event.detail[0] ?? event.detail;
@@ -350,6 +392,11 @@
                 if (! viewer || this.captureEnCours || ! this.glbUrl) {
                     return;
                 }
+                this.lireExistants();
+                if (this.placesRestantes() <= 0) {
+                    this.statut = 'Maximum ' + this.maxVisuels + ' photos par devis : retire une photo pour en capturer une autre.';
+                    return;
+                }
 
                 this.captureEnCours = true;
                 this.statut = 'Capture en cours...';
@@ -358,7 +405,8 @@
                     const blob = await viewer.toBlob({ idealAspect: true, mimeType: 'image/png' });
                     const url = URL.createObjectURL(blob);
                     this.captures.push({ id: Date.now() + '-' + Math.random(), blob, url });
-                    this.statut = this.captures.length + ' vue(s) capturée(s), pas encore ajoutée(s) au champ.';
+                    this.statut = this.captures.length + ' vue(s) capturée(s), pas encore ajoutée(s) au champ.'
+                        + (this.placesRestantes() <= 0 ? ' Maximum ' + this.maxVisuels + ' photos atteint.' : '');
                 } catch (e) {
                     console.error('[devis-visuel] erreur capture', e);
                     this.statut = 'Erreur lors de la capture.';

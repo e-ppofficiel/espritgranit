@@ -15,6 +15,9 @@ class DevisExporter extends Exporter
     {
         return [
             ExportColumn::make('numero')->label('Numéro'),
+            ExportColumn::make('reference_client')->label('Référence client'),
+            ExportColumn::make('reference_interne')->label('Référence interne'),
+            ExportColumn::make('reference_usine')->label('Référence usine'),
             ExportColumn::make('societe.enseigne')->label('Société'),
             ExportColumn::make('agence.nom')->label('Agence'),
             ExportColumn::make('monument.nom')->label('Monument'),

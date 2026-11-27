@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -34,6 +35,9 @@ class Commande extends Model
         'commentaire',
         'document_cgv',
         'annulee_at',
+        'reference_client',
+        'reference_interne',
+        'reference_usine',
     ];
 
     protected $casts = [
@@ -55,6 +59,9 @@ class Commande extends Model
                 'date_arrivee_prevue',
                 'date_arrivee_reelle',
                 'commentaire',
+                'reference_client',
+                'reference_interne',
+                'reference_usine',
             ])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs();
@@ -103,12 +110,41 @@ class Commande extends Model
             'semelle_reference' => $devis->semelle_reference,
             'semelle_libelle' => $devis->semelle_libelle,
             'prix_semelle' => $devis->prix_semelle,
+            'reference_client' => $devis->reference_client,
+            'reference_interne' => $devis->reference_interne,
+            'reference_usine' => $devis->reference_usine,
             'statut' => 'en_preparation',
         ]);
 
         $devis->update(['statut' => 'transforme_commande']);
 
         return $commande;
+    }
+
+    /**
+     * Chemin (disque public) de l'image à afficher pour cette commande dans les listes :
+     * la première vue capturée sur le devis d'origine (elle montre le granit choisi), à défaut
+     * l'image principale du monument. Un fichier absent du disque est ignoré (on passe au suivant).
+     * Null si aucune image n'est disponible.
+     */
+    public function visuelListe(): ?string
+    {
+        $disque = Storage::disk('public');
+        $candidats = [];
+
+        $visuels = $this->devis?->visuel;
+        if (is_array($visuels)) {
+            $candidats = array_values(array_filter($visuels, 'is_string'));
+        }
+        $candidats[] = $this->monument?->image_principale;
+
+        foreach ($candidats as $chemin) {
+            if (is_string($chemin) && $chemin !== '' && $disque->exists($chemin)) {
+                return $chemin;
+            }
+        }
+
+        return null;
     }
 
     public function devis()

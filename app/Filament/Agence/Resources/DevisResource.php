@@ -150,6 +150,21 @@ class DevisResource extends Resource
                     ->dehydrated(false)
                     ->placeholder('Généré automatiquement à la création'),
 
+                Forms\Components\TextInput::make('reference_client')
+                    ->label('Référence client')
+                    ->maxLength(100),
+
+                Forms\Components\TextInput::make('reference_interne')
+                    ->label('Référence interne')
+                    ->maxLength(100),
+
+                // Renseignée par Esprit Granit : l'agence la voit (dès qu'elle existe) mais ne peut pas la modifier.
+                Forms\Components\TextInput::make('reference_usine')
+                    ->label('Référence usine')
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->visible(fn (?Devis $record) => filled($record?->reference_usine)),
+
                 Forms\Components\Select::make('user_id')
                     ->label('Contact')
                     ->relationship('user', 'name', fn (Builder $query) => $query->where('agence_id', Auth::user()->agence_id ?? -1))
@@ -341,16 +356,32 @@ class DevisResource extends Resource
 
                 Forms\Components\FileUpload::make('visuel')
                     ->label('Visuel du monument configuré')
+                    ->helperText('Maximum ' . Devis::MAX_VISUELS . ' photos.')
                     ->image()
                     ->multiple()
                     ->reorderable()
+                    ->maxFiles(Devis::MAX_VISUELS)
+                    ->rules([
+                        fn (): \Closure => function (string $attribute, $value, \Closure $fail) {
+                            if (is_array($value) && count($value) > Devis::MAX_VISUELS) {
+                                $fail('Un devis accepte au maximum ' . Devis::MAX_VISUELS . ' photos.');
+                            }
+                        },
+                    ])
                     ->directory('devis/visuels')
                     ->visibility('public')
                     ->extraAlpineAttributes([
+                        // Repère lu par l'aperçu 3D pour savoir combien de photos le champ contient déjà.
+                        'data-devis-visuel-field' => 'true',
+                        // Les captures sont ajoutées dans la limite des places libres du champ (4 photos maximum).
                         'x-on:devis-visuel-captures-ready.window' => '
                             const pond = FilePond.find($el.querySelector(".filepond--root"));
                             if (pond) {
-                                $event.detail.forEach((fichier) => pond.addFile(fichier));
+                                const libres = Math.max(0, ' . Devis::MAX_VISUELS . ' - pond.getFiles().length);
+                                $event.detail.slice(0, libres).forEach((fichier) => pond.addFile(fichier));
+                                if ($event.detail.length > libres) {
+                                    console.warn("[devis-visuel] limite de ' . Devis::MAX_VISUELS . ' photos atteinte : captures en trop ignorées");
+                                }
                             } else {
                                 console.error("[devis-visuel] instance FilePond introuvable sur ce champ");
                             }
@@ -367,6 +398,21 @@ class DevisResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->weight('bold'),
+                Tables\Columns\TextColumn::make('reference_client')
+                    ->label('Réf. client')
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('reference_interne')
+                    ->label('Réf. interne')
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('reference_usine')
+                    ->label('Réf. usine')
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('agence.nom')
                     ->label('Agence')
                     ->toggleable()
@@ -463,6 +509,30 @@ class DevisResource extends Resource
                     ->url(fn (Devis $record) => route('devis.telecharger-pdf', $record))
                     ->openUrlInNewTab(),
             ]);
+    }
+
+    /**
+     * Recherche globale : numéro, références et monument. getGlobalSearchEloquentQuery() s'appuie sur
+     * getEloquentQuery() ci-dessus : une agence ne trouve que ses propres devis.
+     */
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['numero', 'reference_client', 'reference_interne', 'reference_usine', 'monument.nom'];
+    }
+
+    public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+    {
+        return "Devis {$record->numero}";
+    }
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return array_filter([
+            'Monument' => $record->monument?->nom,
+            'Réf. client' => $record->reference_client,
+            'Réf. interne' => $record->reference_interne,
+            'Réf. usine' => $record->reference_usine,
+        ], fn ($valeur) => filled($valeur));
     }
 
     public static function getRelations(): array

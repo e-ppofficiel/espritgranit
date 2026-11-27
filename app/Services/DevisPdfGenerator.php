@@ -38,7 +38,9 @@ class DevisPdfGenerator
     {
         $devis->loadMissing(['societe', 'agence', 'monument', 'granit', 'departementLivraison']);
 
-        $visuels = static::encoderVisuelsEnBase64($devis->visuel ?? []);
+        // Un devis accepte au plus Devis::MAX_VISUELS photos ; un ancien devis qui en aurait davantage
+        // n'en affiche que les premières (le PDF reste sur 2 lignes de 2 images).
+        $visuels = static::encoderVisuelsEnBase64(array_slice((array) ($devis->visuel ?? []), 0, Devis::MAX_VISUELS));
         $visuelParDefaut = false;
 
         // Repli sur l'image principale (non configurée) du monument si aucun visuel

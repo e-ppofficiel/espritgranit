@@ -34,6 +34,18 @@ class CommandeResource extends Resource
                     ->dehydrated(false)
                     ->placeholder('Généré automatiquement'),
 
+                Forms\Components\TextInput::make('reference_client')
+                    ->label('Référence client')
+                    ->maxLength(100),
+
+                Forms\Components\TextInput::make('reference_interne')
+                    ->label('Référence interne')
+                    ->maxLength(100),
+
+                Forms\Components\TextInput::make('reference_usine')
+                    ->label('Référence usine')
+                    ->maxLength(100),
+
                 Forms\Components\Select::make('devis_id')
                     ->label('Devis d\'origine')
                     ->relationship('devis', 'numero')
@@ -214,11 +226,35 @@ class CommandeResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Évite une requête par ligne pour le visuel (devis d'origine + monument).
+            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->with(['devis:id,visuel', 'monument:id,nom,image_principale']))
             ->columns([
+                Tables\Columns\ImageColumn::make('visuel_liste')
+                    ->label('Visuel')
+                    ->getStateUsing(fn (Commande $record): ?string => $record->visuelListe())
+                    ->disk('public')
+                    ->width(72)
+                    ->height(54)
+                    ->extraImgAttributes(['style' => 'object-fit: contain; background-color: #f3f4f6; border-radius: 6px;']),
                 Tables\Columns\TextColumn::make('numero')
                     ->searchable()
                     ->sortable()
                     ->weight('bold'),
+                Tables\Columns\TextColumn::make('reference_client')
+                    ->label('Réf. client')
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('reference_interne')
+                    ->label('Réf. interne')
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('reference_usine')
+                    ->label('Réf. usine')
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('societe.enseigne')
                     ->label('Société')
                     ->searchable(),
@@ -315,11 +351,20 @@ class CommandeResource extends Resource
 
     public static function getGloballySearchableAttributes(): array
     {
-        return ['numero', 'societe.enseigne', 'agence.nom'];
+        return ['numero', 'societe.enseigne', 'agence.nom', 'reference_client', 'reference_interne', 'reference_usine'];
     }
 
     public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
     {
         return "Commande {$record->numero}";
+    }
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return array_filter([
+            'Réf. client' => $record->reference_client,
+            'Réf. interne' => $record->reference_interne,
+            'Réf. usine' => $record->reference_usine,
+        ], fn ($valeur) => filled($valeur));
     }
 }

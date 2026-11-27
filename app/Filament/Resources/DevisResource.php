@@ -135,6 +135,18 @@ class DevisResource extends Resource
                     ->dehydrated(false)
                     ->placeholder('Généré automatiquement à la création'),
 
+                Forms\Components\TextInput::make('reference_client')
+                    ->label('Référence client')
+                    ->maxLength(100),
+
+                Forms\Components\TextInput::make('reference_interne')
+                    ->label('Référence interne')
+                    ->maxLength(100),
+
+                Forms\Components\TextInput::make('reference_usine')
+                    ->label('Référence usine')
+                    ->maxLength(100),
+
                 Forms\Components\Select::make('societe_id')
                     ->label('Société')
                     ->relationship('societe', 'enseigne')
@@ -348,16 +360,32 @@ class DevisResource extends Resource
 
                 Forms\Components\FileUpload::make('visuel')
                 ->label('Visuel du monument configuré')
+                ->helperText('Maximum ' . Devis::MAX_VISUELS . ' photos.')
                 ->image()
                 ->multiple()
                 ->reorderable()
+                ->maxFiles(Devis::MAX_VISUELS)
+                ->rules([
+                    fn (): \Closure => function (string $attribute, $value, \Closure $fail) {
+                        if (is_array($value) && count($value) > Devis::MAX_VISUELS) {
+                            $fail('Un devis accepte au maximum ' . Devis::MAX_VISUELS . ' photos.');
+                        }
+                    },
+                ])
                 ->directory('devis/visuels')
                 ->visibility('public')
                 ->extraAlpineAttributes([
+                    // Repère lu par l'aperçu 3D pour savoir combien de photos le champ contient déjà.
+                    'data-devis-visuel-field' => 'true',
+                    // Les captures sont ajoutées dans la limite des places libres du champ (4 photos maximum).
                     'x-on:devis-visuel-captures-ready.window' => '
                         const pond = FilePond.find($el.querySelector(".filepond--root"));
                         if (pond) {
-                            $event.detail.forEach((fichier) => pond.addFile(fichier));
+                            const libres = Math.max(0, ' . Devis::MAX_VISUELS . ' - pond.getFiles().length);
+                            $event.detail.slice(0, libres).forEach((fichier) => pond.addFile(fichier));
+                            if ($event.detail.length > libres) {
+                                console.warn("[devis-visuel] limite de ' . Devis::MAX_VISUELS . ' photos atteinte : captures en trop ignorées");
+                            }
                         } else {
                             console.error("[devis-visuel] instance FilePond introuvable sur ce champ");
                         }
@@ -378,6 +406,21 @@ class DevisResource extends Resource
                     ->label('Société')
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('reference_client')
+                    ->label('Réf. client')
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('reference_interne')
+                    ->label('Réf. interne')
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('reference_usine')
+                    ->label('Réf. usine')
+                    ->searchable()
+                    ->placeholder('—')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('agence.nom')
                     ->label('Agence')
                     ->searchable()
@@ -515,7 +558,7 @@ class DevisResource extends Resource
 
     public static function getGloballySearchableAttributes(): array
     {
-        return ['numero', 'societe.enseigne', 'agence.nom', 'monument.nom'];
+        return ['numero', 'societe.enseigne', 'agence.nom', 'monument.nom', 'reference_client', 'reference_interne', 'reference_usine'];
     }
 
     public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
@@ -525,9 +568,12 @@ class DevisResource extends Resource
 
     public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
     {
-        return [
+        return array_filter([
             'Société' => $record->societe?->enseigne,
             'Statut' => $record->statut,
-        ];
+            'Réf. client' => $record->reference_client,
+            'Réf. interne' => $record->reference_interne,
+            'Réf. usine' => $record->reference_usine,
+        ], fn ($valeur) => filled($valeur));
     }
 }
