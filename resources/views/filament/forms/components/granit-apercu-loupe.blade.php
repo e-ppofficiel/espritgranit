@@ -1,5 +1,7 @@
 @php
     $granitRecord = $granitRecord ?? null;
+    // Vrai côté agence : on masque les messages de diagnostic réservés à l'administration (défaut : faux).
+    $masquerDiagnostic = $masquerDiagnostic ?? false;
     $image = $granitRecord?->image;
     // Chemin enregistré en base s'il pointe vers un vrai fichier, sinon fichier nommé
     // d'après la référence interne (granits/{reference_interne}.jpg|png|…).
@@ -18,6 +20,8 @@
         <div style="padding:12px 14px; border:1px dashed rgba(128,128,128,.5); border-radius:8px; font-size:.85rem; opacity:.85;">
             @if (! $granitRecord)
                 L'aperçu en grand apparaîtra après l'enregistrement du granit.
+            @elseif ($masquerDiagnostic)
+                Aucune image disponible pour ce granit.
             @else
                 Aucune image trouvée pour ce granit.<br>
                 Chemin en base : <code>{{ $image ?: '(vide)' }}</code><br>
@@ -25,7 +29,7 @@
             @endif
         </div>
     @else
-        @if ($viaReference)
+        @if ($viaReference && ! $masquerDiagnostic)
             <div style="margin-bottom:10px; padding:10px 12px; border:1px solid #f59e0b; border-radius:8px; font-size:.82rem; color:#f59e0b; line-height:1.45;">
                 Image retrouvée grâce à la référence interne : <code>{{ $chemin }}</code>.<br>
                 Le chemin enregistré en base (<code>{{ $image ?: 'vide' }}</code>) ne correspond à aucun fichier : le champ « Image source » est donc vide.
